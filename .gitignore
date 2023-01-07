@@ -20,3 +20,6 @@ Cargo.lock
 
 # I often dump logs into a file just called "out"
 out
+
+# vscode
+.vscode

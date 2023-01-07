@@ -1,12 +1,17 @@
 #![no_std]
 #![no_main]
 #![feature(abi_x86_interrupt)]
+#![feature(alloc_error_handler)]
 
+extern crate alloc;
+
+pub mod allocator;
 pub mod gdt;
 pub mod interrupts;
 pub mod io;
 pub mod memory;
 
+use alloc::boxed::Box;
 use limine::{LimineBootInfoRequest, LimineMemmapRequest, LimineMemoryMapEntryType};
 use raw_cpuid::CpuId;
 use x86_64::{
@@ -15,7 +20,7 @@ use x86_64::{
     VirtAddr,
 };
 
-use crate::memory::translate_addr;
+use crate::memory::{translate_addr, BootInfoFrameAllocator};
 
 static BOOTLOADER_INFO: LimineBootInfoRequest = LimineBootInfoRequest::new(0);
 static MEMORY_MAP: LimineMemmapRequest = LimineMemmapRequest::new(0);
@@ -59,17 +64,14 @@ pub extern "C" fn _start() -> ! {
 
     let phys_mem_offset = VirtAddr::new(0);
     let mut mapper = unsafe { memory::init(phys_mem_offset) };
-    let mut frame_allocator = unsafe { memory::BootInfoFrameAllocator::init(&mmap_response) };
+    let mut frame_allocator = unsafe {
+        BootInfoFrameAllocator::init(&mmap_response)
+    };
 
-    let virt = VirtAddr::new(0xdeadbeaf000);
-    let phys = mapper.translate_addr(virt);
-    trace!("{:?} -> {:?}", virt, phys);
+    allocator::init_heap(&mut mapper, &mut frame_allocator)
+        .expect("initialising heap failed");
 
-    let page = Page::containing_address(virt);
-    memory::create_example_mapping(page, &mut mapper, &mut frame_allocator);
-
-    let phys = mapper.translate_addr(virt);
-    trace!("{:?} -> {:?}", virt, phys);
+    let x = Box::new(41);
 
     info!("Kernel finished");
 
@@ -94,6 +96,11 @@ fn cpu_info() {
 fn rust_panic(info: &core::panic::PanicInfo) -> ! {
     fatal!("{}", info);
     hcf();
+}
+
+#[alloc_error_handler]
+fn alloc_error_handler(layout: alloc::alloc::Layout) -> ! {
+    panic!("Allocation error: {:?}", layout);
 }
 
 /// Die, spectacularly.
