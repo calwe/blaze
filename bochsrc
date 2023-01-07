@@ -1,0 +1,6 @@
+ata0-master: type=cdrom, path="target/kernel.iso", status=inserted
+display_library: sdl2
+megs: 128
+boot: cdrom
+clock: sync=realtime, time0=local, rtc_sync=1
+magic_break: enabled=1
