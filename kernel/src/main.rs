@@ -5,13 +5,13 @@
 
 extern crate alloc;
 
-pub mod allocator;
 pub mod gdt;
 pub mod interrupts;
 pub mod io;
 pub mod memory;
+pub mod util;
 
-use alloc::boxed::Box;
+use alloc::{boxed::Box, vec::Vec};
 use limine::{LimineBootInfoRequest, LimineMemmapRequest, LimineMemoryMapEntryType};
 use raw_cpuid::CpuId;
 use x86_64::{
@@ -20,7 +20,7 @@ use x86_64::{
     VirtAddr,
 };
 
-use crate::memory::{translate_addr, BootInfoFrameAllocator};
+use crate::memory::{translate_addr, BootInfoFrameAllocator, allocator::{self, ALLOCATOR}};
 
 static BOOTLOADER_INFO: LimineBootInfoRequest = LimineBootInfoRequest::new(0);
 static MEMORY_MAP: LimineMemmapRequest = LimineMemmapRequest::new(0);
@@ -70,8 +70,6 @@ pub extern "C" fn _start() -> ! {
 
     allocator::init_heap(&mut mapper, &mut frame_allocator)
         .expect("initialising heap failed");
-
-    let x = Box::new(41);
 
     info!("Kernel finished");
 

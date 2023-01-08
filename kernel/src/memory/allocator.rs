@@ -5,13 +5,15 @@ use core::{
 
 use x86_64::{structures::paging::{Size4KiB, FrameAllocator, mapper::MapToError, Page, frame, PageTableFlags, Mapper}, VirtAddr};
 
-use crate::trace;
+use crate::{trace, util::WrappedMutex};
+
+use super::bump_alloc::BumpAllocator;
 
 pub const HEAP_START: usize = 0xffff_ffff_dead_0000;
 pub const HEAP_SIZE: usize = 100 * 1024; // 100 KiB
 
 #[global_allocator]
-static ALLOCATOR: Dummy = Dummy;
+pub static ALLOCATOR: WrappedMutex<BumpAllocator> = WrappedMutex::new(BumpAllocator::new());
 
 pub struct Dummy;
 
@@ -47,5 +49,11 @@ pub fn init_heap(
         };
     }
 
+    ALLOCATOR.lock().init(HEAP_START, HEAP_SIZE);
+
     Ok(())
+}
+
+pub fn align_up(addr: usize, align: usize) -> usize {
+    (addr + align - 1) & !(align - 1)
 }
