@@ -14,5 +14,4 @@ From here we can just overwrite the previously allocated memory.
 
 ![Bump allocator overwrite](assets/BUMP_OVERWRITE.png)
 
-## Linked List Allocator
-
+This is the only allocation method that we will use for now. Later, we will replace this with a buddy allocator.

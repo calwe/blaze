@@ -33,7 +33,6 @@ unsafe impl GlobalAlloc for WrappedMutex<BumpAllocator> {
     unsafe fn alloc(&self, layout: core::alloc::Layout) -> *mut u8 {
         let mut allocator = self.lock();
 
-        // TODO: Bound checks
         let alloc_start = align_up(allocator.next, layout.align());
         let alloc_end = match alloc_start.checked_add(layout.size()) {
             Some(end) => end,
