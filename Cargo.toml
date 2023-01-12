@@ -1,6 +1,6 @@
 [workspace]
 members = [
     "kernel",
-    "usermode",
+    "userspace/user_test",
     "x86_64"
 ]

@@ -8,6 +8,7 @@ LIMINE_GIT_URL="https://github.com/limine-bootloader/limine.git"
 
 # Cargo passes the path to the built executable as the first argument.
 KERNEL=$1
+USER_TEST=$(echo $KERNEL | cut -d / -f 1-3)/user_test
 
 # Clone the `limine` repository if we don't have it yet.
 if [ ! -d target/limine ]; then
@@ -22,7 +23,7 @@ cd -
 
 # Copy the needed files into an ISO image.
 mkdir -p target/iso_root
-cp $KERNEL kernel/conf/limine.cfg target/limine/limine{.sys,-cd.bin,-cd-efi.bin} target/iso_root
+cp $KERNEL $USER_TEST kernel/conf/limine.cfg target/limine/limine{.sys,-cd.bin,-cd-efi.bin} target/iso_root
 
 xorriso -as mkisofs                                             \
     -b limine-cd.bin                                            \

@@ -14,12 +14,13 @@ extern crate alloc;
 pub mod gdt;
 pub mod interrupts;
 pub mod io;
+pub mod loader;
 pub mod memory;
 pub mod util;
 
 use core::arch::{global_asm};
 
-use limine::{LimineBootInfoRequest, LimineMemmapRequest, LimineMemoryMapEntryType};
+use limine::{LimineBootInfoRequest, LimineMemmapRequest, LimineMemoryMapEntryType, LimineModuleRequest};
 use raw_cpuid::CpuId;
 use x86_64::{
     VirtAddr, structures::paging::{FrameAllocator, Page, Mapper, PageTableFlags, Size4KiB, PhysFrame}, PhysAddr,
@@ -29,6 +30,7 @@ use crate::memory::{ BootInfoFrameAllocator, allocator::{self, HEAP_START, HEAP_
 
 static BOOTLOADER_INFO: LimineBootInfoRequest = LimineBootInfoRequest::new(0);
 static MEMORY_MAP: LimineMemmapRequest = LimineMemmapRequest::new(0);
+static MODULES: LimineModuleRequest = LimineModuleRequest::new(0);
 
 global_asm!(include_str!("asm/usermode.S"));
 
@@ -62,8 +64,17 @@ pub extern "C" fn _start() -> ! {
 
     init();
 
-    info!("Kernel finished");
+    trace!("Getting modules from bootloader");
+    let modules = MODULES
+        .get_response()
+        .get()
+        .expect("Bootloader did not respond to modules request.");
+    let modules = modules.modules();
+    let ramdisk = modules.get(0).expect("No ramdisk at index 0");
+    trace!("ramdisk size: {}", ramdisk.length);
+    trace!("ramdisk base: {:p}", ramdisk.base.as_ptr().unwrap());
 
+    info!("Kernel finished");
 
     hcf();
 }
@@ -146,8 +157,8 @@ fn init_memory() {
         mapper.map_to(page, frame, flags, &mut frame_allocator).unwrap().flush();
     }
     
-    trace!("jumping to usermode ({:x})", user_fn_virt);
-    unsafe { _usermode_jump(user_fn_virt); }
+    // trace!("jumping to usermode ({:x})", user_fn_virt);
+    // unsafe { _usermode_jump(user_fn_virt); }
 }
 
 /// Prints basic cpu infomation onto the screen
