@@ -17,21 +17,15 @@ pub mod io;
 pub mod memory;
 pub mod util;
 
-use core::arch::{asm, global_asm};
+use core::arch::{global_asm};
 
 use limine::{LimineBootInfoRequest, LimineMemmapRequest, LimineMemoryMapEntryType};
 use raw_cpuid::CpuId;
 use x86_64::{
-<<<<<<< HEAD
-    VirtAddr,
-=======
-    instructions,
-    structures::paging::{Page, PageTable, Translate, PageTableFlags, Mapper, FrameAllocator, mapper::MapToError, Size4KiB, frame, PhysFrame},
-    VirtAddr, PhysAddr,
->>>>>>> 5cb320256e5ab317bda954ace28124cf000337a4
+    VirtAddr, structures::paging::{FrameAllocator, Page, Mapper, PageTableFlags, Size4KiB, PhysFrame}, PhysAddr,
 };
 
-use crate::memory::{ BootInfoFrameAllocator, allocator::{self, HEAP_START, HEAP_SIZE}};
+use crate::memory::{ BootInfoFrameAllocator, allocator::{self, HEAP_START, HEAP_SIZE}, translate_addr};
 
 static BOOTLOADER_INFO: LimineBootInfoRequest = LimineBootInfoRequest::new(0);
 static MEMORY_MAP: LimineMemmapRequest = LimineMemmapRequest::new(0);
@@ -147,7 +141,7 @@ fn init_memory() {
 
     let page: Page<Size4KiB> = Page::containing_address(VirtAddr::new(user_fn_virt));
     let flags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE;
-    let frame :PhysFrame<Size4KiB> = PhysFrame::containing_address(PhysAddr::new(page_phys_start));
+    let frame: PhysFrame<Size4KiB> = PhysFrame::containing_address(PhysAddr::new(page_phys_start));
     unsafe {
         mapper.map_to(page, frame, flags, &mut frame_allocator).unwrap().flush();
     }
@@ -189,6 +183,7 @@ fn cpu_info() {
 // }
 
 // FIXME: Also temporary. This should be replaced by another binary linked to the kernel.
+/// tmp usermode func
 #[no_mangle]
 pub extern "C" fn _usermode_function() {
     loop {}

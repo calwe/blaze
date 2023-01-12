@@ -1,12 +1,9 @@
-<<<<<<< HEAD
-//! Global Descriptor Table and Task State Segment
-=======
-pub const DOUBLE_FAULT_IST_INDEX: u16 = 0;
-pub const KERNEL_STACK_INDEX: u16 = 0;
->>>>>>> 5cb320256e5ab317bda954ace28124cf000337a4
+//! Global Descriptor Table
 
 /// The index of the double fault stack in the TSS.
 pub const DOUBLE_FAULT_IST_INDEX: u16 = 0;
+/// The index of the kernel stack in the TSS.
+pub const KERNEL_STACK_INDEX: u16 = 0;
 
 use lazy_static::lazy_static;
 use x86_64::{
