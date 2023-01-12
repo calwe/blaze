@@ -1,4 +1,9 @@
+<<<<<<< HEAD
 //! Global Descriptor Table and Task State Segment
+=======
+pub const DOUBLE_FAULT_IST_INDEX: u16 = 0;
+pub const KERNEL_STACK_INDEX: u16 = 0;
+>>>>>>> 5cb320256e5ab317bda954ace28124cf000337a4
 
 /// The index of the double fault stack in the TSS.
 pub const DOUBLE_FAULT_IST_INDEX: u16 = 0;
@@ -17,6 +22,14 @@ use crate::trace;
 lazy_static! {
     static ref TSS: TaskStateSegment = {
         let mut tss = TaskStateSegment::new();
+        tss.privilege_stack_table[KERNEL_STACK_INDEX as usize] = {
+            const STACK_SIZE: usize = 4096 * 5;
+            static mut STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
+
+            let stack_start = VirtAddr::from_ptr(unsafe { &STACK });
+            let stack_end = stack_start + STACK_SIZE;
+            stack_end
+        };
         tss.interrupt_stack_table[DOUBLE_FAULT_IST_INDEX as usize] = {
             const STACK_SIZE: usize = 4096 * 5;
             static mut STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
