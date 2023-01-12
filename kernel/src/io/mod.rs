@@ -1,3 +1,5 @@
+//! All I/O related modules
+
 pub mod colours;
 pub mod io;
 pub mod log_macros;

@@ -1,9 +1,9 @@
-use core::arch::asm;
+//! Functions for our interrupt handlers
 
 use lazy_static::lazy_static;
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode};
 
-use crate::{fatal, gdt, println, trace};
+use crate::{fatal, gdt, trace};
 
 lazy_static! {
     static ref IDT: InterruptDescriptorTable = {
@@ -19,6 +19,7 @@ lazy_static! {
     };
 }
 
+/// Initialize the IDT
 pub fn init() {
     trace!("Initializing IDT");
     IDT.load();

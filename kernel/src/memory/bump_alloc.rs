@@ -1,3 +1,10 @@
+//! # Bump Allocator
+//!
+//! The most simple allocator design implemented for `kmalloc()` is a "bump allocator". This basic allocator simply has a `next` ptr which will point to the next availible block in the heap.
+//! Each time we allocate more memory, the `next` ptr is just 'bumped' along. Freeing memory does *not* move this pointer back, as we don't keep track of what blocks are where. The only time the pointer moves backwards is if *all* of the heap is free'd.
+//! From here we can just overwrite the previously allocated memory.
+//! This is the only allocation method that we will use for now. Later, we will replace this with a buddy allocator.
+
 use core::{alloc::GlobalAlloc, ptr};
 
 use crate::util::WrappedMutex;
@@ -5,6 +12,7 @@ use crate::util::WrappedMutex;
 use super::allocator::align_up;
 
 #[derive(Debug)]
+/// A simple bump allocator
 pub struct BumpAllocator {
     heap_start: usize,
     heap_end: usize,
@@ -13,6 +21,7 @@ pub struct BumpAllocator {
 }
 
 impl BumpAllocator {
+    /// Create an **empty** `BumpAllocator` 
     pub const fn new() -> Self {
         Self {
             heap_start: 0,
@@ -22,6 +31,7 @@ impl BumpAllocator {
         }
     }
 
+    /// Initialize the `BumpAllocator` with a heap
     pub fn init(&mut self, heap_start: usize, heap_size: usize) {
         self.heap_start = heap_start;
         self.heap_end = heap_start + heap_size;

@@ -1,3 +1,5 @@
+//! Memory related modules
+
 pub mod allocator;
 pub mod bump_alloc;
 pub mod memory;

@@ -1,3 +1,5 @@
+//! I/O for the kernel.
+
 use core::fmt;
 use limine::LimineTerminalRequest;
 use spin::Mutex;
@@ -35,6 +37,7 @@ impl fmt::Write for Writer {
 
 static WRITER: Mutex<Writer> = Mutex::new(Writer { terminals: None });
 
+/// Prints to the screen using the Limine terminal.
 pub fn _print(args: fmt::Arguments) {
     // NOTE: Locking needs to happen around `print_fmt`, not `print_str`, as the former
     // will call the latter potentially multiple times per invocation.
@@ -43,11 +46,13 @@ pub fn _print(args: fmt::Arguments) {
 }
 
 #[macro_export]
+/// Prints to the screen using the Limine terminal.
 macro_rules! print {
     ($($t:tt)*) => { $crate::io::_print(format_args!($($t)*)) };
 }
 
 #[macro_export]
+/// Prints to the screen using the Limine terminal, with a newline.
 macro_rules! println {
     ()          => { $crate::print!("\n"); };
     // On nightly, `format_args_nl!` could also be used.

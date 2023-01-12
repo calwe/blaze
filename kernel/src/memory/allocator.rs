@@ -1,32 +1,21 @@
-use core::{
-    alloc::{GlobalAlloc, Layout},
-    ptr::null_mut,
-};
+//! Common functions for kernel allocators
 
-use x86_64::{structures::paging::{Size4KiB, FrameAllocator, mapper::MapToError, Page, frame, PageTableFlags, Mapper}, VirtAddr};
+use x86_64::{structures::paging::{Size4KiB, FrameAllocator, mapper::MapToError, Page, PageTableFlags, Mapper}, VirtAddr};
 
-use crate::{trace, util::WrappedMutex};
+use crate::{util::WrappedMutex};
 
 use super::bump_alloc::BumpAllocator;
 
+/// Memory address of the start of the heap
 pub const HEAP_START: usize = 0xffff_ffff_dead_0000;
+/// Size of the heap in bytes
 pub const HEAP_SIZE: usize = 100 * 1024; // 100 KiB
 
 #[global_allocator]
+/// Global allocator for the kernel
 pub static ALLOCATOR: WrappedMutex<BumpAllocator> = WrappedMutex::new(BumpAllocator::new());
 
-pub struct Dummy;
-
-unsafe impl GlobalAlloc for Dummy {
-    unsafe fn alloc(&self, _layout: Layout) -> *mut u8 {
-        null_mut()
-    }
-
-    unsafe fn dealloc(&self, _ptr: *mut u8, _layout: Layout) {
-        panic!("dealloc should not be called");
-    }
-}
-
+/// Map the kernel heap in memory
 pub fn init_heap(
     mapper: &mut impl Mapper<Size4KiB>,
     frame_allocator: &mut impl FrameAllocator<Size4KiB>,
@@ -54,6 +43,8 @@ pub fn init_heap(
     Ok(())
 }
 
+/// Align an address down to the nearest multiple of `align`
+/// Align **must** be a power of two
 pub fn align_up(addr: usize, align: usize) -> usize {
     (addr + align - 1) & !(align - 1)
 }

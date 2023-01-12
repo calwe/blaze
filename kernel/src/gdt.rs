@@ -1,6 +1,7 @@
-pub const DOUBLE_FAULT_IST_INDEX: u16 = 0;
+//! Global Descriptor Table and Task State Segment
 
-use core::arch::asm;
+/// The index of the double fault stack in the TSS.
+pub const DOUBLE_FAULT_IST_INDEX: u16 = 0;
 
 use lazy_static::lazy_static;
 use x86_64::{
@@ -59,6 +60,7 @@ lazy_static! {
     };
 }
 
+/// Initializes the Global Descriptor Table and Task State Segment.
 pub fn init() {
     trace!("Initializing GDT");
 

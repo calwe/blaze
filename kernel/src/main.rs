@@ -1,7 +1,13 @@
+//! # PrivOS Kernel
+//! 
+//! A simple kernel for the PrivOS operating system.
+
 #![no_std]
 #![no_main]
 #![feature(abi_x86_interrupt)]
 #![feature(alloc_error_handler)]
+
+#![warn(missing_docs)]
 
 extern crate alloc;
 
@@ -13,16 +19,13 @@ pub mod util;
 
 use core::arch::asm;
 
-use alloc::{boxed::Box, vec::Vec};
 use limine::{LimineBootInfoRequest, LimineMemmapRequest, LimineMemoryMapEntryType};
 use raw_cpuid::CpuId;
 use x86_64::{
-    instructions,
-    structures::paging::{Page, PageTable, Translate},
     VirtAddr,
 };
 
-use crate::memory::{translate_addr, BootInfoFrameAllocator, allocator::{self, ALLOCATOR, HEAP_START, HEAP_SIZE}};
+use crate::memory::{ BootInfoFrameAllocator, allocator::{self, HEAP_START, HEAP_SIZE}};
 
 static BOOTLOADER_INFO: LimineBootInfoRequest = LimineBootInfoRequest::new(0);
 static MEMORY_MAP: LimineMemmapRequest = LimineMemmapRequest::new(0);
