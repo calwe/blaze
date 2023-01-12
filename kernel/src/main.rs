@@ -26,7 +26,7 @@ use x86_64::{
     VirtAddr, structures::paging::{FrameAllocator, Page, Mapper, PageTableFlags, Size4KiB, PhysFrame}, PhysAddr,
 };
 
-use crate::memory::{ BootInfoFrameAllocator, allocator::{self, HEAP_START, HEAP_SIZE}, translate_addr};
+use crate::{memory::{ BootInfoFrameAllocator, allocator::{self, HEAP_START, HEAP_SIZE}, translate_addr}, loader::elf::{Elf64_Ehdr, load_elf_at_addr}};
 
 static BOOTLOADER_INFO: LimineBootInfoRequest = LimineBootInfoRequest::new(0);
 static MEMORY_MAP: LimineMemmapRequest = LimineMemmapRequest::new(0);
@@ -73,6 +73,8 @@ pub extern "C" fn _start() -> ! {
     let ramdisk = modules.get(0).expect("No ramdisk at index 0");
     trace!("ramdisk size: {}", ramdisk.length);
     trace!("ramdisk base: {:p}", ramdisk.base.as_ptr().unwrap());
+
+    load_elf_at_addr(ramdisk.base.as_ptr().unwrap() as u64);
 
     info!("Kernel finished");
 
