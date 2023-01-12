@@ -11,14 +11,14 @@ pub mod io;
 pub mod memory;
 pub mod util;
 
-use core::arch::asm;
+use core::arch::{asm, global_asm};
 
 use alloc::{boxed::Box, vec::Vec};
 use limine::{LimineBootInfoRequest, LimineMemmapRequest, LimineMemoryMapEntryType};
 use raw_cpuid::CpuId;
 use x86_64::{
     instructions,
-    structures::paging::{Page, PageTable, Translate},
+    structures::paging::{Page, PageTable, Translate, PageTableFlags, Mapper, FrameAllocator, mapper::MapToError},
     VirtAddr,
 };
 
@@ -26,6 +26,15 @@ use crate::memory::{translate_addr, BootInfoFrameAllocator, allocator::{self, AL
 
 static BOOTLOADER_INFO: LimineBootInfoRequest = LimineBootInfoRequest::new(0);
 static MEMORY_MAP: LimineMemmapRequest = LimineMemmapRequest::new(0);
+
+global_asm!(include_str!("asm/usermode.S"));
+
+extern "C" {
+    fn _usermode_jump();
+}
+
+const USER_STACK_START: u64 = 0x0000_dead_beef_0000;
+const USER_STACK_SIZE: u64 = 1024 * 100; // 100KiB
 
 /// Kernel Entry Point
 ///
@@ -51,7 +60,7 @@ pub extern "C" fn _start() -> ! {
 
     info!("Kernel finished");
 
-    usermode_jump();
+    unsafe { _usermode_jump(); }
 
     hcf();
 }
@@ -94,9 +103,29 @@ fn init_memory() {
         BootInfoFrameAllocator::init(&mmap_response)
     };
 
-    trace!("Mapping kernel heap ({:x} -> {:x})", HEAP_START, HEAP_START + HEAP_SIZE);
+    trace!("Mapping kernel heap (0x{:x} -> 0x{:x})", HEAP_START, HEAP_START + HEAP_SIZE);
     allocator::init_heap(&mut mapper, &mut frame_allocator)
         .expect("initialising heap failed");
+
+    trace!("Mapping user stack (0x{:x} -> 0x{:x})", USER_STACK_START, USER_STACK_START + USER_STACK_SIZE);
+
+    let page_range = {
+        let heap_start = VirtAddr::new(USER_STACK_START as u64);
+        let heap_end = heap_start + USER_STACK_SIZE - 1u64;
+        let heap_start_page = Page::containing_address(heap_start);
+        let heap_end_page = Page::containing_address(heap_end);
+        Page::range_inclusive(heap_start_page, heap_end_page)
+    };
+
+    for page in page_range {
+        let frame = frame_allocator
+            .allocate_frame()
+            .unwrap();
+        let flags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE;
+        unsafe {
+            mapper.map_to(page, frame, flags, &mut frame_allocator).unwrap().flush()
+        };
+    }
 }
 
 /// Prints basic cpu infomation onto the screen
@@ -107,36 +136,39 @@ fn cpu_info() {
     }
 }
 
-// FIXME: This is an temporary hack. THIS MUST BE DELETED AND IMPROVED
-fn usermode_jump() {
-    let func = usermode_function as *const ();
-    warn!("JUMPING INTO USERMODE (at {:p})", func);
-    unsafe { 
-        asm!(
-            "mov ax, (8 * 8) | 3",
-            "xchg bx, bx",
-            "mov ds, ax",
-            "mov es, ax",
-            "mov fs, ax",
-            "mov gs, ax",
-            "mov rax, rsp",
-            "push (8 * 8) | 3",
-            "push rax",
-            "pushf",
-            "push (7 * 8) | 3",
-            "push {}",
-            "iretq",
-            sym usermode_function,
-        ); 
-    }
-}
+// // FIXME: This is an temporary hack. THIS MUST BE DELETED AND IMPROVED
+// fn usermode_jump() {
+//     let func = usermode_function as *const ();
+//     warn!("JUMPING INTO USERMODE (at {:p})", func);
+//     unsafe { 
+//         asm!(
+//             "mov ax, (8 * 8) | 3",
+//             "xchg bx, bx",
+//             "mov ds, ax",
+//             "mov es, ax",
+//             "mov fs, ax",
+//             "mov gs, ax",
+//             "mov rax, rsp",
+//             "push (8 * 8) | 3",
+//             "push rax",
+//             "pushf",
+//             "push (7 * 8) | 3",
+//             "push {}",
+//             "iretq",
+//             sym usermode_function,
+//         ); 
+//     }
+// }
 
 // FIXME: Also temporary. This should be replaced by another binary linked to the kernel.
 #[no_mangle]
-extern "C" fn usermode_function() {
-    unsafe {
-        asm!("xchg bx, bx");
-    };
+pub extern "C" fn _usermode_function() {
+    loop {
+        unsafe {
+            asm!("nop");
+        }
+    }
+    //warn!("Usermode?");
     hcf();
 }
 
