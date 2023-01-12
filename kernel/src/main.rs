@@ -18,8 +18,8 @@ use limine::{LimineBootInfoRequest, LimineMemmapRequest, LimineMemoryMapEntryTyp
 use raw_cpuid::CpuId;
 use x86_64::{
     instructions,
-    structures::paging::{Page, PageTable, Translate, PageTableFlags, Mapper, FrameAllocator, mapper::MapToError},
-    VirtAddr,
+    structures::paging::{Page, PageTable, Translate, PageTableFlags, Mapper, FrameAllocator, mapper::MapToError, Size4KiB, frame, PhysFrame},
+    VirtAddr, PhysAddr,
 };
 
 use crate::memory::{translate_addr, BootInfoFrameAllocator, allocator::{self, ALLOCATOR, HEAP_START, HEAP_SIZE}};
@@ -30,11 +30,12 @@ static MEMORY_MAP: LimineMemmapRequest = LimineMemmapRequest::new(0);
 global_asm!(include_str!("asm/usermode.S"));
 
 extern "C" {
-    fn _usermode_jump();
+    fn _usermode_jump(func: u64);
 }
 
 const USER_STACK_START: u64 = 0x0000_dead_beef_0000;
 const USER_STACK_SIZE: u64 = 1024 * 100; // 100KiB
+const USER_FUNCTION_START: u64 = 0xffff_ffff_feef_0000;
 
 /// Kernel Entry Point
 ///
@@ -60,7 +61,6 @@ pub extern "C" fn _start() -> ! {
 
     info!("Kernel finished");
 
-    unsafe { _usermode_jump(); }
 
     hcf();
 }
@@ -126,6 +126,25 @@ fn init_memory() {
             mapper.map_to(page, frame, flags, &mut frame_allocator).unwrap().flush()
         };
     }
+
+    let user_function_curr = VirtAddr::new(_usermode_function as *const () as u64);
+    let user_function_phys = unsafe {
+        translate_addr(user_function_curr, phys_mem_offset).unwrap()
+    };
+    let page_phys_start = (user_function_phys.as_u64() >> 12) << 12;
+    let fn_page_offset = user_function_phys.as_u64() - page_phys_start;
+    let user_fn_virt_base = USER_FUNCTION_START;
+    let user_fn_virt = user_fn_virt_base + fn_page_offset;
+
+    let page: Page<Size4KiB> = Page::containing_address(VirtAddr::new(user_fn_virt));
+    let flags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE;
+    let frame :PhysFrame<Size4KiB> = PhysFrame::containing_address(PhysAddr::new(page_phys_start));
+    unsafe {
+        mapper.map_to(page, frame, flags, &mut frame_allocator).unwrap().flush();
+    }
+    
+    trace!("jumping to usermode ({:x})", user_fn_virt);
+    unsafe { _usermode_jump(user_fn_virt); }
 }
 
 /// Prints basic cpu infomation onto the screen
@@ -163,12 +182,8 @@ fn cpu_info() {
 // FIXME: Also temporary. This should be replaced by another binary linked to the kernel.
 #[no_mangle]
 pub extern "C" fn _usermode_function() {
-    loop {
-        unsafe {
-            asm!("nop");
-        }
-    }
-    //warn!("Usermode?");
+    loop {}
+    warn!("Usermode?");
     hcf();
 }
 

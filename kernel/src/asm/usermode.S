@@ -11,7 +11,7 @@ _usermode_jump:
     push rax
     pushf
     push (7 * 8) | 3
-    lea  rax, [rip + _usermode_function]
+    ; lea  rax, [rip + _usermode_function]
     xchg bx, bx
-    push rax
+    push rdi
     iretq
