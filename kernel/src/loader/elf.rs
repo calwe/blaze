@@ -1,11 +1,14 @@
 //! Tools for loading ELF binaries.
 
-use crate::{trace, error};
+use core::ptr;
 
-const ELF64_MAGIC: u32 = 0x7f
-                            | ('E' as u32) << 8
-                            | ('L' as u32) << 16 
-                            | ('F' as u32) << 24;
+use x86_64::{structures::paging::mapper::MapToError, VirtAddr};
+
+use crate::{
+    error,
+    memory::{self, allocator::allocate_of_size, BootInfoFrameAllocator},
+    trace, warn, MEMORY_MAP,
+};
 
 type Elf64_Addr = u64;
 type Elf64_Off = u64;
@@ -14,6 +17,16 @@ type Elf64_Word = u32;
 type Elf64_Sword = u32;
 type Elf64_Xword = u64;
 type Elf64_Sxword = u64;
+
+const ELF64_MAGIC: u32 = 0x7f | ('E' as u32) << 8 | ('L' as u32) << 16 | ('F' as u32) << 24;
+const ELFCLASS64: u8 = 2;
+const ELFDATA2LSB: u8 = 1;
+const EM_X86_64: u16 = 62;
+const EV_CURRENT: u32 = 1;
+const ET_REL: u16 = 1;
+const ET_EXEC: u16 = 2;
+const ET_DYN: u16 = 3;
+const PT_LOAD: Elf64_Word = 1;
 
 #[repr(C, packed)]
 #[derive(Debug, Copy, Clone)]
@@ -34,34 +47,128 @@ pub struct E_Ident {
 /// The file header is located at the beggining of the file,
 /// and is used to locate the other parts of the file.
 pub struct Elf64_Ehdr {
-    e_ident: E_Ident, // ELF Ident
-    e_type: Elf64_Half, // Object file type
-    e_machine: Elf64_Half, // Machine type
-    e_version: Elf64_Word, // Object file version
-    e_entry: Elf64_Addr, // Entry point address
-    e_phoff: Elf64_Off, // Program header offset
-    e_shoff: Elf64_Off, // Section header offset
-    e_flags: Elf64_Word, // Processor-specifc flags
-    e_ehsize: Elf64_Half, // ELF header size
+    e_ident: E_Ident,        // ELF Ident
+    e_type: Elf64_Half,      // Object file type
+    e_machine: Elf64_Half,   // Machine type
+    e_version: Elf64_Word,   // Object file version
+    e_entry: Elf64_Addr,     // Entry point address
+    e_phoff: Elf64_Off,      // Program header offset
+    e_shoff: Elf64_Off,      // Section header offset
+    e_flags: Elf64_Word,     // Processor-specifc flags
+    e_ehsize: Elf64_Half,    // ELF header size
     e_phentsize: Elf64_Half, // Size of program header entry
-    e_phnum: Elf64_Half, // Number of program header entries
+    e_phnum: Elf64_Half,     // Number of program header entries
     e_shentsize: Elf64_Half, // Size of section header entry
-    e_shnum: Elf64_Half, // Number of section header entries
-    e_shstrnfx: Elf64_Half // Section name string table index
+    e_shnum: Elf64_Half,     // Number of section header entries
+    e_shstrnfx: Elf64_Half,  // Section name string table index
+}
+
+#[repr(C, packed)]
+#[derive(Debug, Copy, Clone)]
+/// In executable and shared object files, sections are grouped into segments
+/// for loading. The program header table contains a list of entries describing
+/// each segment.
+pub struct Elf64_Phdr {
+    p_type: Elf64_Word,    // type of segment
+    p_flags: Elf64_Word,   // Segment attributes
+    p_offset: Elf64_Off,   // Offset in file
+    p_vaddr: Elf64_Addr,   // Virtual addr in memory
+    p_paddr: Elf64_Addr,   // Reserved
+    p_filesz: Elf64_Xword, // Size of segment in file
+    p_memsz: Elf64_Xword,  // Size of segment in memory
+    p_align: Elf64_Xword,  // Alignment of segment
 }
 
 /// Loads an elf into memory given its address
-pub fn load_elf_at_addr(addr: u64) {
+pub fn load_elf_at_addr(addr: u64) -> Result<u64, ()> {
     trace!("Loading ELF stored at 0x{:x}", addr);
-    let elf_header = unsafe {
-        *(addr as *const Elf64_Ehdr)
-    };
+    let elf_header = unsafe { *(addr as *const Elf64_Ehdr) };
 
+    if !check_elf_support(&elf_header) {
+        return Err(());
+    }
+
+    let etype = elf_header.e_type;
+    trace!("Type: {}", etype);
+
+    let phnum = elf_header.e_phnum;
+    let phoff = elf_header.e_phoff;
+    let phentsize = elf_header.e_phentsize;
+    trace!("{phnum} entries * {phentsize}B | 0x{phoff:x}");
+
+    for i in 0..phnum {
+        let phaddr = (addr + phoff) + (phentsize * i) as u64;
+        let program_header = unsafe { *(phaddr as *const Elf64_Phdr) };
+        if program_header.p_type == PT_LOAD {
+            trace!("Allocating memory for program header");
+            trace!("{:?}", program_header);
+            let mmap_response = MEMORY_MAP
+                .get_response()
+                .get()
+                .expect("Bootloader did not respond to memory map request.");
+            let mut mapper = unsafe { memory::init(VirtAddr::new(0)) };
+            let mut frame_allocator = unsafe { BootInfoFrameAllocator::init(&mmap_response) };
+            let start = program_header.p_vaddr;
+            let size = program_header.p_memsz;
+            match allocate_of_size(&mut mapper, &mut frame_allocator, start, size, true) {
+                Ok(()) => trace!("Succesfully allocated"),
+                Err(MapToError::ParentEntryHugePage) => warn!("Already allocted in huge page"),
+                Err(MapToError::PageAlreadyMapped(e)) => warn!("Already mapped {e:?}"),
+                Err(e) => {
+                    error!("Allocation failed: {e:?}");
+                    return Err(());
+                }
+            };
+
+            let poffset = program_header.p_offset;
+            let paddr = addr + poffset;
+            trace!("Loading segment from {paddr:x}");
+
+            let src = paddr as *const u8;
+            let dst = start as *mut u8;
+            let size = program_header.p_memsz;
+            unsafe {
+                ptr::copy_nonoverlapping(src, dst, size as usize);
+            }
+        }
+    }
+
+    let entry = elf_header.e_entry;
+    trace!("ELF Loaded. Entry point 0x{entry:x}");
+    Ok(entry)
+    // TODO: https://wiki.osdev.org/ELF
+}
+
+fn check_elf_support(elf_header: &Elf64_Ehdr) -> bool {
     let magic = elf_header.e_ident.magic;
     if magic != ELF64_MAGIC {
         error!("Invalid magic! (0x{:x} != 0x{:x})", magic, ELF64_MAGIC);
-        return;
+        return false;
     }
-
-    // TODO: https://wiki.osdev.org/ELF
+    let class = elf_header.e_ident.ei_class;
+    if class != ELFCLASS64 {
+        error!("Unsupported class {class}.");
+        return false;
+    }
+    let endianness = elf_header.e_ident.ei_data;
+    if endianness != ELFDATA2LSB {
+        error!("Unsupported endianness {endianness}.");
+        return false;
+    }
+    let machine = elf_header.e_machine;
+    if machine != EM_X86_64 {
+        error!("Unsupported machine arch {machine}.");
+        return false;
+    }
+    let version = elf_header.e_version;
+    if version != EV_CURRENT {
+        error!("Unsupported ELF version {version}");
+        return false;
+    }
+    let etype = elf_header.e_type;
+    if etype != ET_REL && etype != ET_EXEC && etype != ET_DYN {
+        error!("Unsupported ELF type {etype}");
+        return false;
+    }
+    true
 }

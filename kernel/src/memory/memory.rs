@@ -4,8 +4,8 @@ use limine::{LimineMemmapResponse, LimineMemoryMapEntryType};
 use x86_64::{
     registers::control::Cr3,
     structures::paging::{
-        page_table::FrameError, FrameAllocator, OffsetPageTable, PageTable,
-        PhysFrame, Size4KiB,
+        page_table::FrameError, FrameAllocator, OffsetPageTable, PageTable, PhysFrame, Size2MiB,
+        Size4KiB,
     },
     PhysAddr, VirtAddr,
 };
@@ -75,7 +75,7 @@ impl BootInfoFrameAllocator {
         }
     }
 
-    fn usable_frames(&self) -> impl Iterator<Item = PhysFrame> + '_ {
+    fn usable_frames(&self) -> impl Iterator<Item = PhysFrame<Size4KiB>> + '_ {
         // get usable regions from memory map
         let regions = self.memory_map.memmap().iter();
         let usable_regions = regions.filter(|r| r.typ == LimineMemoryMapEntryType::Usable);
@@ -89,7 +89,7 @@ impl BootInfoFrameAllocator {
 }
 
 unsafe impl FrameAllocator<Size4KiB> for BootInfoFrameAllocator {
-    fn allocate_frame(&mut self) -> Option<PhysFrame> {
+    fn allocate_frame(&mut self) -> Option<PhysFrame<Size4KiB>> {
         let frame = self.usable_frames().nth(self.next);
         self.next += 1;
         frame

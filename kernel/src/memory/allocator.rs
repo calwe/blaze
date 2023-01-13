@@ -1,8 +1,14 @@
 //! Common functions for kernel allocators
 
-use x86_64::{structures::paging::{Size4KiB, FrameAllocator, mapper::MapToError, Page, PageTableFlags, Mapper}, VirtAddr};
+use x86_64::{
+    structures::paging::{
+        frame, mapper::MapToError, FrameAllocator, Mapper, Page, PageTable, PageTableFlags,
+        Size2MiB, Size4KiB,
+    },
+    VirtAddr,
+};
 
-use crate::{util::WrappedMutex};
+use crate::{trace, util::WrappedMutex};
 
 use super::bump_alloc::BumpAllocator;
 
@@ -20,25 +26,51 @@ pub fn init_heap(
     mapper: &mut impl Mapper<Size4KiB>,
     frame_allocator: &mut impl FrameAllocator<Size4KiB>,
 ) -> Result<(), MapToError<Size4KiB>> {
+    allocate_of_size(
+        mapper,
+        frame_allocator,
+        HEAP_START as u64,
+        HEAP_SIZE as u64,
+        false,
+    )?;
+
+    ALLOCATOR.lock().init(HEAP_START, HEAP_SIZE);
+
+    Ok(())
+}
+
+/// Allocate a block of memory at a certain address
+pub fn allocate_of_size(
+    mapper: &mut impl Mapper<Size4KiB>,
+    frame_allocator: &mut impl FrameAllocator<Size4KiB>,
+    start: u64,
+    size: u64,
+    user: bool,
+) -> Result<(), MapToError<Size4KiB>> {
+    trace!("Allocating memory block of size:");
+    trace!("    Start: 0x{start:x}");
+    trace!("    Size: {size}B");
+    trace!("    User: {user}");
+
     let page_range = {
-        let heap_start = VirtAddr::new(HEAP_START as u64);
-        let heap_end = heap_start + HEAP_SIZE - 1u64;
-        let heap_start_page = Page::containing_address(heap_start);
-        let heap_end_page = Page::containing_address(heap_end);
-        Page::range_inclusive(heap_start_page, heap_end_page)
+        let start = VirtAddr::new(start);
+        let end = start + size - 1u64;
+        let start_page = Page::containing_address(start);
+        let end_page = Page::containing_address(end);
+        Page::range_inclusive(start_page, end_page)
     };
 
     for page in page_range {
         let frame = frame_allocator
             .allocate_frame()
             .ok_or(MapToError::FrameAllocationFailed)?;
-        let flags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE;
-        unsafe {
-            mapper.map_to(page, frame, flags, frame_allocator)?.flush()
-        };
+        let mut flags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE;
+        if user {
+            flags |= PageTableFlags::USER_ACCESSIBLE;
+        }
+        mapper.unmap(page);
+        unsafe { mapper.map_to(page, frame, flags, frame_allocator)?.flush() }
     }
-
-    ALLOCATOR.lock().init(HEAP_START, HEAP_SIZE);
 
     Ok(())
 }

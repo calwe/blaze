@@ -1,12 +1,11 @@
 //! # PrivOS Kernel
-//! 
+//!
 //! A simple kernel for the PrivOS operating system.
 
 #![no_std]
 #![no_main]
 #![feature(abi_x86_interrupt)]
 #![feature(alloc_error_handler)]
-
 #![warn(missing_docs)]
 
 extern crate alloc;
@@ -18,15 +17,27 @@ pub mod loader;
 pub mod memory;
 pub mod util;
 
-use core::arch::{global_asm};
+use core::arch::global_asm;
 
-use limine::{LimineBootInfoRequest, LimineMemmapRequest, LimineMemoryMapEntryType, LimineModuleRequest};
+use limine::{
+    LimineBootInfoRequest, LimineMemmapRequest, LimineMemoryMapEntryType, LimineModuleRequest,
+};
 use raw_cpuid::CpuId;
+use spin::Mutex;
 use x86_64::{
-    VirtAddr, structures::paging::{FrameAllocator, Page, Mapper, PageTableFlags, Size4KiB, PhysFrame}, PhysAddr,
+    structures::paging::{FrameAllocator, Mapper, Page, PageTableFlags, PhysFrame, Size4KiB},
+    PhysAddr, VirtAddr,
 };
 
-use crate::{memory::{ BootInfoFrameAllocator, allocator::{self, HEAP_START, HEAP_SIZE}, translate_addr}, loader::elf::{Elf64_Ehdr, load_elf_at_addr}};
+use crate::{
+    loader::elf::{load_elf_at_addr, Elf64_Ehdr},
+    memory::{
+        allocator::{self, HEAP_SIZE, HEAP_START},
+        translate_addr, BootInfoFrameAllocator,
+    },
+};
+
+use lazy_static::lazy_static;
 
 static BOOTLOADER_INFO: LimineBootInfoRequest = LimineBootInfoRequest::new(0);
 static MEMORY_MAP: LimineMemmapRequest = LimineMemmapRequest::new(0);
@@ -74,9 +85,14 @@ pub extern "C" fn _start() -> ! {
     trace!("ramdisk size: {}", ramdisk.length);
     trace!("ramdisk base: {:p}", ramdisk.base.as_ptr().unwrap());
 
-    load_elf_at_addr(ramdisk.base.as_ptr().unwrap() as u64);
+    let entry = load_elf_at_addr(ramdisk.base.as_ptr().unwrap() as u64).unwrap();
 
     info!("Kernel finished");
+
+    info!("jumping to usermode: {entry:x}");
+    unsafe {
+        _usermode_jump(entry);
+    }
 
     hcf();
 }
@@ -91,7 +107,7 @@ fn init() {
 }
 
 /// Basic memory initialisation
-/// 
+///
 /// - Get the memory map from the bootloader (and display basic infomation)
 /// - Create a frame allocator using the memory map
 /// - Map the kernel heap into memory
@@ -115,15 +131,20 @@ fn init_memory() {
     trace!("Creating our frame allocator");
     let phys_mem_offset = VirtAddr::new(0);
     let mut mapper = unsafe { memory::init(phys_mem_offset) };
-    let mut frame_allocator = unsafe {
-        BootInfoFrameAllocator::init(&mmap_response)
-    };
+    let mut frame_allocator = unsafe { BootInfoFrameAllocator::init(&mmap_response) };
 
-    trace!("Mapping kernel heap (0x{:x} -> 0x{:x})", HEAP_START, HEAP_START + HEAP_SIZE);
-    allocator::init_heap(&mut mapper, &mut frame_allocator)
-        .expect("initialising heap failed");
+    trace!(
+        "Mapping kernel heap (0x{:x} -> 0x{:x})",
+        HEAP_START,
+        HEAP_START + HEAP_SIZE
+    );
+    allocator::init_heap(&mut mapper, &mut frame_allocator).expect("initialising heap failed");
 
-    trace!("Mapping user stack (0x{:x} -> 0x{:x})", USER_STACK_START, USER_STACK_START + USER_STACK_SIZE);
+    trace!(
+        "Mapping user stack (0x{:x} -> 0x{:x})",
+        USER_STACK_START,
+        USER_STACK_START + USER_STACK_SIZE
+    );
 
     let page_range = {
         let heap_start = VirtAddr::new(USER_STACK_START as u64);
@@ -134,31 +155,36 @@ fn init_memory() {
     };
 
     for page in page_range {
-        let frame = frame_allocator
-            .allocate_frame()
-            .unwrap();
-        let flags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE;
+        let frame = frame_allocator.allocate_frame().unwrap();
+        let flags =
+            PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE;
         unsafe {
-            mapper.map_to(page, frame, flags, &mut frame_allocator).unwrap().flush()
+            mapper
+                .map_to(page, frame, flags, &mut frame_allocator)
+                .unwrap()
+                .flush()
         };
     }
 
     let user_function_curr = VirtAddr::new(_usermode_function as *const () as u64);
-    let user_function_phys = unsafe {
-        translate_addr(user_function_curr, phys_mem_offset).unwrap()
-    };
+    let user_function_phys =
+        unsafe { translate_addr(user_function_curr, phys_mem_offset).unwrap() };
     let page_phys_start = (user_function_phys.as_u64() >> 12) << 12;
     let fn_page_offset = user_function_phys.as_u64() - page_phys_start;
     let user_fn_virt_base = USER_FUNCTION_START;
     let user_fn_virt = user_fn_virt_base + fn_page_offset;
 
     let page: Page<Size4KiB> = Page::containing_address(VirtAddr::new(user_fn_virt));
-    let flags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE;
+    let flags =
+        PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE;
     let frame: PhysFrame<Size4KiB> = PhysFrame::containing_address(PhysAddr::new(page_phys_start));
     unsafe {
-        mapper.map_to(page, frame, flags, &mut frame_allocator).unwrap().flush();
+        mapper
+            .map_to(page, frame, flags, &mut frame_allocator)
+            .unwrap()
+            .flush();
     }
-    
+
     // trace!("jumping to usermode ({:x})", user_fn_virt);
     // unsafe { _usermode_jump(user_fn_virt); }
 }
@@ -175,7 +201,7 @@ fn cpu_info() {
 // fn usermode_jump() {
 //     let func = usermode_function as *const ();
 //     warn!("JUMPING INTO USERMODE (at {:p})", func);
-//     unsafe { 
+//     unsafe {
 //         asm!(
 //             "mov ax, (8 * 8) | 3",
 //             "xchg bx, bx",
@@ -191,7 +217,7 @@ fn cpu_info() {
 //             "push {}",
 //             "iretq",
 //             sym usermode_function,
-//         ); 
+//         );
 //     }
 // }
 
