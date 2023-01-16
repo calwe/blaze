@@ -10,6 +10,7 @@
 
 extern crate alloc;
 
+pub mod acpi;
 pub mod gdt;
 pub mod interrupts;
 pub mod io;
@@ -21,6 +22,7 @@ use core::arch::global_asm;
 
 use limine::{
     LimineBootInfoRequest, LimineMemmapRequest, LimineMemoryMapEntryType, LimineModuleRequest,
+    LimineRsdpRequest,
 };
 use raw_cpuid::CpuId;
 use spin::Mutex;
@@ -30,6 +32,7 @@ use x86_64::{
 };
 
 use crate::{
+    acpi::rsdp::RSDPDescriptor20,
     loader::elf::{load_elf_at_addr, Elf64_Ehdr},
     memory::{
         allocator::{self, HEAP_SIZE, HEAP_START},
@@ -42,6 +45,7 @@ use lazy_static::lazy_static;
 static BOOTLOADER_INFO: LimineBootInfoRequest = LimineBootInfoRequest::new(0);
 static MEMORY_MAP: LimineMemmapRequest = LimineMemmapRequest::new(0);
 static MODULES: LimineModuleRequest = LimineModuleRequest::new(0);
+static RSDP: LimineRsdpRequest = LimineRsdpRequest::new(0);
 
 global_asm!(include_str!("asm/usermode.S"));
 
@@ -87,12 +91,19 @@ pub extern "C" fn _start() -> ! {
 
     let entry = load_elf_at_addr(ramdisk.base.as_ptr().unwrap() as u64).unwrap();
 
+    let rsdp_resp = RSDP
+        .get_response()
+        .get()
+        .expect("Bootloader did not respond to RSDP request.");
+    let rsdp = unsafe { *(rsdp_resp.address.as_ptr().unwrap() as *const RSDPDescriptor20) };
+    info!("RSDP: {:#x?}", rsdp);
+
     info!("Kernel finished");
 
     info!("jumping to usermode: {entry:x}");
     unsafe {
         _usermode_jump(entry);
-    }
+    };
 
     hcf();
 }

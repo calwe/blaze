@@ -3,6 +3,7 @@
 
 #[no_mangle]
 pub extern "C" fn _start() {
+    unsafe { core::arch::asm!("int3") }
     loop {}
 }
 
