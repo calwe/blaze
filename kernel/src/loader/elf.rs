@@ -2,7 +2,7 @@
 
 use core::ptr;
 
-use x86_64::{structures::paging::mapper::MapToError, VirtAddr};
+use x86_64::{align_up, structures::paging::mapper::MapToError, VirtAddr};
 
 use crate::{
     error,
@@ -27,6 +27,8 @@ const ET_REL: u16 = 1;
 const ET_EXEC: u16 = 2;
 const ET_DYN: u16 = 3;
 const PT_LOAD: Elf64_Word = 1;
+
+const DEFAULT_STACK_SIZE: u64 = 1024 * 100; // 100KiB
 
 #[repr(C, packed)]
 #[derive(Debug, Copy, Clone)]
@@ -80,7 +82,7 @@ pub struct Elf64_Phdr {
 }
 
 /// Loads an elf into memory given its address
-pub fn load_elf_at_addr(addr: u64) -> Result<u64, ()> {
+pub fn load_elf_at_addr(addr: u64) -> Result<(u64, u64), ()> {
     trace!("Loading ELF stored at 0x{:x}", addr);
     let elf_header = unsafe { *(addr as *const Elf64_Ehdr) };
 
@@ -96,18 +98,23 @@ pub fn load_elf_at_addr(addr: u64) -> Result<u64, ()> {
     let phentsize = elf_header.e_phentsize;
     trace!("{phnum} entries * {phentsize}B | 0x{phoff:x}");
 
+    let mmap_response = MEMORY_MAP
+        .get_response()
+        .get()
+        .expect("Bootloader did not respond to memory map request.");
+    let mut mapper = unsafe { memory::init(VirtAddr::new(0)) };
+    let mut frame_allocator = unsafe { BootInfoFrameAllocator::init(&mmap_response) };
+
+    let mut stack_start = 0;
     for i in 0..phnum {
         let phaddr = (addr + phoff) + (phentsize * i) as u64;
         let program_header = unsafe { *(phaddr as *const Elf64_Phdr) };
+        // we only want to load segments marked as loadable
         if program_header.p_type == PT_LOAD {
             trace!("Allocating memory for program header");
             trace!("{:?}", program_header);
-            let mmap_response = MEMORY_MAP
-                .get_response()
-                .get()
-                .expect("Bootloader did not respond to memory map request.");
-            let mut mapper = unsafe { memory::init(VirtAddr::new(0)) };
-            let mut frame_allocator = unsafe { BootInfoFrameAllocator::init(&mmap_response) };
+
+            // we then need to allocate the memory for the segment
             let start = program_header.p_vaddr;
             let size = program_header.p_memsz;
             match allocate_of_size(&mut mapper, &mut frame_allocator, start, size, true) {
@@ -120,10 +127,15 @@ pub fn load_elf_at_addr(addr: u64) -> Result<u64, ()> {
                 }
             };
 
+            // update the start of our stack, as we need to allocate it after the program
+            stack_start = start + size;
+
+            // find where the segment is in the file
             let poffset = program_header.p_offset;
             let paddr = addr + poffset;
             trace!("Loading segment from {paddr:x}");
 
+            // copy the segment from the file to the memory
             let src = paddr as *const u8;
             let dst = start as *mut u8;
             let size = program_header.p_memsz;
@@ -133,9 +145,35 @@ pub fn load_elf_at_addr(addr: u64) -> Result<u64, ()> {
         }
     }
 
+    // align our stack to the page boundary
+    stack_start = align_up(stack_start, 4096);
+
+    // then we need to map the stack for the program
+    trace!("Allocating stack for program");
+    match allocate_of_size(
+        &mut mapper,
+        &mut frame_allocator,
+        stack_start,
+        DEFAULT_STACK_SIZE,
+        true,
+    ) {
+        Ok(()) => trace!("Succesfully allocated"),
+        Err(MapToError::ParentEntryHugePage) => warn!("Already allocted in huge page"),
+        Err(MapToError::PageAlreadyMapped(e)) => warn!("Already mapped {e:?}"),
+        Err(e) => {
+            error!("Allocation failed: {e:?}");
+            return Err(());
+        }
+    };
+
+    // the stack grows downwards, so we need to find the end.
+    // since we map the stack in pages, we need to align it up to the page size
+    let stack_end = align_up(stack_start + DEFAULT_STACK_SIZE, 4096);
+    trace!("Stack end: 0x{stack_end:x}");
+
     let entry = elf_header.e_entry;
     trace!("ELF Loaded. Entry point 0x{entry:x}");
-    Ok(entry)
+    Ok((entry, stack_end))
     // TODO: https://wiki.osdev.org/ELF
 }
 

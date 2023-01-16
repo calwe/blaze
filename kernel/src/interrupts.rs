@@ -1,9 +1,11 @@
 //! Functions for our interrupt handlers
 
-use lazy_static::lazy_static;
-use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode};
+use core::arch::asm;
 
-use crate::{fatal, gdt, trace};
+use lazy_static::lazy_static;
+use x86_64::{structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode}, PrivilegeLevel};
+
+use crate::{fatal, gdt, trace, info};
 
 lazy_static! {
     static ref IDT: InterruptDescriptorTable = {
@@ -16,6 +18,8 @@ lazy_static! {
                 .set_handler_fn(double_fault_handler)
                 .set_stack_index(gdt::DOUBLE_FAULT_IST_INDEX);
         }
+
+        idt[0x80].set_handler_fn(system_call).set_privilege_level(PrivilegeLevel::Ring3);
         idt
     };
 }
@@ -54,4 +58,8 @@ extern "x86-interrupt" fn double_fault_handler(
 
 extern "x86-interrupt" fn gp_fault_handler(stack_frame: InterruptStackFrame, error_code: u64) {
     panic!("EXCEPTION: GENERAL PROTECTION FAULT ({error_code})\n{:#?}", stack_frame);
+}
+
+extern "x86-interrupt" fn system_call(stack_frame: InterruptStackFrame) {
+    info!("System call!");
 }

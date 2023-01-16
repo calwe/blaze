@@ -46,10 +46,10 @@ static MODULES: LimineModuleRequest = LimineModuleRequest::new(0);
 global_asm!(include_str!("asm/usermode.S"));
 
 extern "C" {
-    fn _usermode_jump(func: u64);
+    fn _usermode_jump(func: u64, stack: u64);
 }
 
-const USER_STACK_START: u64 = 0x0000_dead_beef_0000;
+const USER_STACK_START: u64 = 0xffff_dead_beef_0000;
 const USER_STACK_SIZE: u64 = 1024 * 100; // 100KiB
 const USER_FUNCTION_START: u64 = 0xffff_ffff_feef_0000;
 
@@ -89,9 +89,9 @@ pub extern "C" fn _start() -> ! {
 
     info!("Kernel finished");
 
-    info!("jumping to usermode: {entry:x}");
+    info!("jumping to usermode: {:x}", entry.0);
     unsafe {
-        _usermode_jump(entry);
+        _usermode_jump(entry.0, entry.1);
     }
 
     hcf();
