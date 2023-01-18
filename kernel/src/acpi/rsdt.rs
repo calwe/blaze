@@ -56,9 +56,12 @@ impl RSDT {
     /// Returns the MADT if it exists.
     pub fn get_madt(&self) -> Option<*const MADT> {
         for entry in self.entries() {
-            if entry.signature() == "APIC" {
-                trace!("Found MADT at {:#x}", &entry as *const ACPISDTHeader as u32);
-                return Some(MADT::from_addr(&entry as *const ACPISDTHeader as u32));
+            let entry_deref = unsafe { *entry };
+            if entry_deref.signature() == "APIC" {
+                // get mem address of entry
+                let addr = entry as u32;
+                trace!("Found MADT at {:#x}", addr);
+                return Some(MADT::from_addr(addr));
             }
         }
         None
@@ -72,7 +75,7 @@ pub struct RSDTIterator {
 }
 
 impl Iterator for RSDTIterator {
-    type Item = ACPISDTHeader;
+    type Item = *const ACPISDTHeader;
 
     fn next(&mut self) -> Option<Self::Item> {
         let rsdt = unsafe { &*self.rsdt };
@@ -80,7 +83,9 @@ impl Iterator for RSDTIterator {
         if self.index >= entries as usize {
             return None;
         }
-        let entry = unsafe { *(rsdt.entries[self.index] as *const ACPISDTHeader) };
+        let addr = rsdt.entries[self.index];
+        trace!("RSDT Entry: {:#x}", addr);
+        let entry = rsdt.entries[self.index] as *const ACPISDTHeader;
         self.index += 1;
         Some(entry)
     }

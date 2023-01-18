@@ -93,8 +93,6 @@ pub extern "C" fn _start() -> ! {
     trace!("ramdisk size: {}", ramdisk.length);
     trace!("ramdisk base: {:p}", ramdisk.base.as_ptr().unwrap());
 
-    let entry = load_elf_at_addr(ramdisk.base.as_ptr().unwrap() as u64).unwrap();
-
     let rsdp_resp = RSDP
         .get_response()
         .get()
@@ -103,14 +101,20 @@ pub extern "C" fn _start() -> ! {
     trace!("{:?}", rsdp);
     let rsdt_ptr = RSDT::from_addr(rsdp.rsdt_address());
     let rsdt = unsafe { &*rsdt_ptr };
-    rsdt.get_madt();
+    let madt = unsafe { &*rsdt.get_madt().unwrap() };
+    trace!("MADT: {:?}", madt);
+    for entry in madt.entries() {
+        trace!("MADT Entry: {:?}", entry);
+    }
 
     info!("Kernel finished");
 
-    info!("jumping to usermode: {:x}", entry.0);
-    unsafe {
-        _usermode_jump(entry.0, entry.1);
-    }
+    //let entry = load_elf_at_addr(ramdisk.base.as_ptr().unwrap() as u64).unwrap();
+
+    // info!("jumping to usermode: {:x}", entry.0);
+    // unsafe {
+    //     _usermode_jump(entry.0, entry.1);
+    // }
 
     hcf();
 }

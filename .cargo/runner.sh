@@ -47,9 +47,18 @@ case $RUNNER in
         ;;
     "none" )
         ;;
+    "qemu-debug" )
+        qemu-system-x86_64 \
+            -machine q35 -cpu qemu64 -M smm=off -m 512M \
+            -D target/log.txt -d int,guest_errors -no-reboot -no-shutdown \
+            -serial stdio \
+            -s \
+            $KERNEL.iso
+        ;;
     * )
         qemu-system-x86_64 \
             -machine q35 -cpu qemu64 -M smm=off -m 512M \
+            -smp cores=2 \
             -D target/log.txt -d int,guest_errors -no-reboot -no-shutdown \
             -serial stdio \
             $KERNEL.iso
