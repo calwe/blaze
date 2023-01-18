@@ -6,6 +6,7 @@
 #![no_main]
 #![feature(abi_x86_interrupt)]
 #![feature(alloc_error_handler)]
+#![feature(ptr_metadata)]
 #![warn(missing_docs)]
 
 extern crate alloc;
@@ -32,7 +33,10 @@ use x86_64::{
 };
 
 use crate::{
-    acpi::rsdp::RSDPDescriptor20,
+    acpi::{
+        rsdp::{RSDPDescriptor, RSDPDescriptor20},
+        rsdt::{ACPISDTHeader, RSDT},
+    },
     loader::elf::{load_elf_at_addr, Elf64_Ehdr},
     memory::{
         allocator::{self, HEAP_SIZE, HEAP_START},
@@ -50,10 +54,10 @@ static RSDP: LimineRsdpRequest = LimineRsdpRequest::new(0);
 global_asm!(include_str!("asm/usermode.S"));
 
 extern "C" {
-    fn _usermode_jump(func: u64);
+    fn _usermode_jump(func: u64, stack: u64);
 }
 
-const USER_STACK_START: u64 = 0x0000_dead_beef_0000;
+const USER_STACK_START: u64 = 0xffff_dead_beef_0000;
 const USER_STACK_SIZE: u64 = 1024 * 100; // 100KiB
 const USER_FUNCTION_START: u64 = 0xffff_ffff_feef_0000;
 
@@ -95,15 +99,18 @@ pub extern "C" fn _start() -> ! {
         .get_response()
         .get()
         .expect("Bootloader did not respond to RSDP request.");
-    let rsdp = unsafe { *(rsdp_resp.address.as_ptr().unwrap() as *const RSDPDescriptor20) };
-    info!("RSDP: {:#x?}", rsdp);
+    let rsdp = RSDPDescriptor::from_rsdp_response(rsdp_resp);
+    trace!("{:?}", rsdp);
+    let rsdt_ptr = RSDT::from_addr(rsdp.rsdt_address());
+    let rsdt = unsafe { &*rsdt_ptr };
+    rsdt.get_madt();
 
     info!("Kernel finished");
 
-    info!("jumping to usermode: {entry:x}");
+    info!("jumping to usermode: {:x}", entry.0);
     unsafe {
-        _usermode_jump(entry);
-    };
+        _usermode_jump(entry.0, entry.1);
+    }
 
     hcf();
 }
