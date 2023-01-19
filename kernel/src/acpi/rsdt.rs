@@ -83,8 +83,6 @@ impl Iterator for RSDTIterator {
         if self.index >= entries as usize {
             return None;
         }
-        let addr = rsdt.entries[self.index];
-        trace!("RSDT Entry: {:#x}", addr);
         let entry = rsdt.entries[self.index] as *const ACPISDTHeader;
         self.index += 1;
         Some(entry)

@@ -14,7 +14,7 @@ use x86_64::{
     VirtAddr,
 };
 
-use crate::trace;
+use crate::{info, trace};
 
 lazy_static! {
     static ref TSS: TaskStateSegment = {
@@ -84,5 +84,5 @@ pub fn init() {
         load_tss(GDT.1.tss_selector);
     }
 
-    trace!("GDT initialized");
+    info!("GDT initialized");
 }
