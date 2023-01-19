@@ -215,7 +215,12 @@ fn init_memory() {
 fn cpu_info() {
     let cpuid = CpuId::new();
     if let Some(vf) = cpuid.get_vendor_info() {
-        info!("   CPU Vendor: {}", vf.as_str());
+        info!("    CPU Vendor: {}", vf.as_str());
+    }
+    if let Some(fi) = cpuid.get_feature_info() {
+        // CPU features: listed as needed
+        info!("    CPU Features: {:?}", fi);
+        info!("        X2APIC: {}", fi.has_x2apic());
     }
 }
 
