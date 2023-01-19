@@ -3,7 +3,7 @@ A ~~probably not very~~ 🔥🚀 ***BLAZINGLY*** 🚀🔥 fast OS written in Rus
 
 ## Dependecies
 - Linux
-- Rust nightly, aswell as the x86_64-unknown-none toolchain.
+- Rust nightly, aswell as the x86_64-unknown-none target.
 - QEMU (for running standalone) and BOCHS (for debugging)
   - Instructions for building BOCHS can be found [here](https://wiki.osdev.org/Bochs#Compiling_Bochs_from_Source)
 - Make (for building [limine](https://github.com/limine-bootloader/limine))
