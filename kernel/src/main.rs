@@ -104,7 +104,7 @@ pub extern "C" fn _start() -> ! {
     let madt = unsafe { &*rsdt.get_madt().unwrap() };
     trace!("MADT: {:?}", madt);
     for entry in madt.entries() {
-        trace!("MADT Entry: {:?}", entry);
+        trace!("MADT Entry of type {:?}", entry.get_type());
     }
 
     info!("Kernel finished");
