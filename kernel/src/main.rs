@@ -7,7 +7,9 @@
 #![feature(abi_x86_interrupt)]
 #![feature(alloc_error_handler)]
 #![feature(ptr_metadata)]
+
 #![warn(missing_docs)]
+#![allow(non_camel_case_types)]
 
 extern crate alloc;
 
@@ -30,10 +32,15 @@ use limine::{
 
 use crate::cmdline::get_cmdline_vars;
 
+/// Information about the bootloader
 pub static BOOTLOADER_INFO: LimineBootInfoRequest = LimineBootInfoRequest::new(0);
+/// Memory map provided by the bootloader
 pub static MEMORY_MAP: LimineMemmapRequest = LimineMemmapRequest::new(0);
+/// Modules provided by the bootloader, such as a ramdisk
 pub static MODULES: LimineModuleRequest = LimineModuleRequest::new(0);
+/// The kernel file provided by the bootloader - gives us the cmdline
 pub static KERNEL_FILE: LimineKernelFileRequest = LimineKernelFileRequest::new(0);
+/// The RSDP (Root System Description Pointer) provided by the bootloader
 pub static RSDP: LimineRsdpRequest = LimineRsdpRequest::new(0);
 
 global_asm!(include_str!("asm/usermode.S"));

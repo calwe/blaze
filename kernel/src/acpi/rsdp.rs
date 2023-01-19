@@ -3,6 +3,7 @@ use limine::LimineRsdpResponse;
 
 #[repr(C, packed)]
 #[derive(Debug, Copy, Clone)]
+/// The RSDPDescriptor is the main descriptor for the RSDP.
 pub struct RSDPDescriptor {
     signature: [u8; 8],
     checksum: u8,
@@ -12,7 +13,7 @@ pub struct RSDPDescriptor {
 }
 
 impl RSDPDescriptor {
-    ///
+    /// Creates a new RSDPDescriptor from the response of the limine rsdp request.
     pub fn from_rsdp_response(response: &LimineRsdpResponse) -> Self {
         unsafe { *(response.address.as_ptr().unwrap() as *const RSDPDescriptor) }
     }
@@ -53,6 +54,8 @@ impl RSDPDescriptor {
 
 #[repr(C, packed)]
 #[derive(Debug, Copy, Clone)]
+/// The RSDPDescriptor20 is the extended version of the RSDPDescriptor. We don't properly use this.
+// TODO: Proper ACPI 2.0 support.
 pub struct RSDPDescriptor20 {
     rsdp: RSDPDescriptor,
     length: u32,

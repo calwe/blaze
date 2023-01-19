@@ -1,13 +1,15 @@
 use core::ptr::from_raw_parts;
 
-use num_derive::FromPrimitive;
 
-use crate::trace;
 use core::fmt::Debug;
+
+use crate::warn;
 
 use super::rsdt::ACPISDTHeader;
 
 #[repr(C, packed)]
+/// Multiple APIC Description Table
+/// The MADT is used to describe the APICs in the system.
 pub struct MADT {
     header: ACPISDTHeader,
     local_apic_address: u32,
@@ -16,12 +18,16 @@ pub struct MADT {
 }
 
 #[repr(C, packed)]
+/// The entries in the MADT.
 pub struct MADTEntry {
     entry_type: u8,
     length: u8,
     data: [u8],
 }
 
+/// An iterator over the entries of the MADT.
+/// The entries are variable length, so this iterator makes it far easier
+/// to access each.
 pub struct MADTIterator {
     madt: *const MADT,
     index: usize,
@@ -31,12 +37,17 @@ impl Iterator for MADTIterator {
     type Item = &'static MADTEntry;
 
     fn next(&mut self) -> Option<Self::Item> {
+        // TODO: Check the MADT checksum
         let madt = unsafe { &*self.madt };
+        // Check if we are at the end of the entries
         if (self.index + 1) >= madt.entries.len() {
             return None;
         }
+        // The entry is offset by the index from the start of the entries.
         let entries = unsafe { madt.entries.as_ptr().add(self.index) };
+        // The length of the entry is stored in the next byte.
         let len = madt.entries[self.index + 1] as usize;
+        // `madt.entries` is a DST, so we need to use `from_raw_parts` to specify the length for the pointer.
         let entry = core::ptr::from_raw_parts(entries as *const (), len) as *const MADTEntry;
         self.index += len;
         Some(unsafe { &*entry })
@@ -83,18 +94,26 @@ impl MADTEntry {
             4 => Some(MADTEntryTypes::LocalAPICNMI),
             5 => Some(MADTEntryTypes::LocalAPICAddressOverride),
             9 => Some(MADTEntryTypes::ProcessorLocalx2APIC),
-            _ => None,
+            _ => {
+                warn!("Unknown MADT entry type: {}", self.entry_type);
+                None
+            }
         }
     }
 }
 
 impl MADT {
+    /// Gets the MADT from the given address.
     pub fn from_addr(addr: u32) -> *const MADT {
+        // The header is at the start of the table.
         let header = unsafe { *(addr as *const ACPISDTHeader) };
+        // Then we can figure out how many entries there are.
         let entries = (header.length - core::mem::size_of::<ACPISDTHeader>() as u32 - 8) / 4;
+        // The final field is a DST, so we need to use `from_raw_parts` to specify the length of the array.
         from_raw_parts(addr as *const (), entries as usize)
     }
 
+    /// Returns an iterator over the entries in the MADT.
     pub fn entries(&self) -> MADTIterator {
         MADTIterator {
             madt: self,
@@ -135,6 +154,7 @@ pub enum MADTEntryTypes {
 
 /// This entry describes a single logical processor and its interrupt controller.
 #[derive(Debug, Clone, Copy)]
+#[allow(dead_code)]
 pub struct ProcessorLocalAPIC {
     /// ACPI processor ID
     processor_id: u8,
@@ -157,6 +177,7 @@ impl ProcessorLocalAPIC {
 
 /// I/O APIC
 #[derive(Debug, Clone, Copy)]
+#[allow(dead_code)]
 pub struct IOAPIC {
     /// I/O APIC ID
     ioapic_id: u8,

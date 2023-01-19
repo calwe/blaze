@@ -1,7 +1,5 @@
 //! Functions for our interrupt handlers
 
-use core::arch::asm;
-
 use lazy_static::lazy_static;
 use x86_64::{
     structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode},
@@ -17,6 +15,7 @@ lazy_static! {
         idt.page_fault.set_handler_fn(page_fault_handler);
         idt.general_protection_fault
             .set_handler_fn(gp_fault_handler);
+        // !SAFETY: We know our stack index is only used by the double fault handler
         unsafe {
             idt.double_fault
                 .set_handler_fn(double_fault_handler)
@@ -69,6 +68,6 @@ extern "x86-interrupt" fn gp_fault_handler(stack_frame: InterruptStackFrame, err
     );
 }
 
-extern "x86-interrupt" fn system_call(stack_frame: InterruptStackFrame) {
+extern "x86-interrupt" fn system_call(_: InterruptStackFrame) {
     info!("System call!");
 }

@@ -2,16 +2,24 @@
 
 use core::sync::atomic::AtomicUsize;
 
+/// The maximum log level. This is set by the kernel command line. (or the `set_log_level` function)
 pub static MAX_LOG_LEVEL: AtomicUsize = AtomicUsize::new(4);
 
+/// The log levels.
 pub enum LogLevel {
+    /// Fatal error. Prints the entire message in white, with a red background.
     Fatal = 0,
+    /// Error. Prefix printed in red.
     Error = 1,
+    /// Warning. Prefix printed in yellow.
     Warn = 2,
+    /// Info. Prefix printed in green.
     Info = 3,
+    /// Trace. Prefix printed in blue.
     Trace = 4,
 }
 
+/// Set the maximum log level.
 pub fn set_log_level(level: LogLevel) {
     MAX_LOG_LEVEL.store(level as usize, core::sync::atomic::Ordering::Relaxed);
 }

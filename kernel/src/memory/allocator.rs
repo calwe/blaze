@@ -2,8 +2,7 @@
 
 use x86_64::{
     structures::paging::{
-        frame, mapper::MapToError, FrameAllocator, Mapper, Page, PageTable, PageTableFlags,
-        Size2MiB, Size4KiB,
+        mapper::MapToError, FrameAllocator, Mapper, Page, PageTableFlags, Size4KiB,
     },
     VirtAddr,
 };
@@ -68,7 +67,9 @@ pub fn allocate_of_size(
         if user {
             flags |= PageTableFlags::USER_ACCESSIBLE;
         }
-        mapper.unmap(page);
+        // FIXME: This is a really bad hack to get around the fact that the first 4GiB of memory is mapped.
+        //        We should really just unmap the first 4GiB of memory and then map it again ourselves.
+        let _ = mapper.unmap(page);
         unsafe { mapper.map_to(page, frame, flags, frame_allocator)?.flush() }
     }
 

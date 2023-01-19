@@ -72,10 +72,12 @@ fn init_acpi() {
     for entry in madt.entries() {
         trace!("MADT Entry of type {:?}", entry.get_type());
     }
+    // TODO: Use the MADT for setting up the APIC (used for SMP)
 }
 
 #[allow(dead_code)]
 fn get_modules() {
+    // TODO: The module here is for our userspace elf. Userspace is disabled for now.
     trace!("Getting modules from bootloader");
     let modules = MODULES
         .get_response()

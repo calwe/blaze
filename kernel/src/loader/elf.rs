@@ -14,8 +14,10 @@ type Elf64_Addr = u64;
 type Elf64_Off = u64;
 type Elf64_Half = u16;
 type Elf64_Word = u32;
+#[allow(dead_code)]
 type Elf64_Sword = u32;
 type Elf64_Xword = u64;
+#[allow(dead_code)]
 type Elf64_Sxword = u64;
 
 const ELF64_MAGIC: u32 = 0x7f | ('E' as u32) << 8 | ('L' as u32) << 16 | ('F' as u32) << 24;
@@ -32,6 +34,8 @@ const DEFAULT_STACK_SIZE: u64 = 1024 * 100; // 100KiB
 
 #[repr(C, packed)]
 #[derive(Debug, Copy, Clone)]
+/// The ELF ident is the first part of the ELF header, and is used to identify the file as an ELF
+/// file.
 pub struct E_Ident {
     magic: u32,
     ei_class: u8,

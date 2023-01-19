@@ -4,7 +4,7 @@ use limine::{LimineMemmapResponse, LimineMemoryMapEntryType};
 use x86_64::{
     registers::control::Cr3,
     structures::paging::{
-        page_table::FrameError, FrameAllocator, OffsetPageTable, PageTable, PhysFrame, Size2MiB,
+        page_table::FrameError, FrameAllocator, OffsetPageTable, PageTable, PhysFrame,
         Size4KiB,
     },
     PhysAddr, VirtAddr,
