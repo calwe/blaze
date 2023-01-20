@@ -1,7 +1,7 @@
 # Blaze
 A ~~probably not very~~ 🔥🚀 ***BLAZINGLY*** 🚀🔥 fast OS written in Rust 🦀🦀
 
-## Dependecies
+## Dependencies
 - Linux
 - Rust nightly, aswell as the x86_64-unknown-none target.
 - QEMU (for running standalone) and BOCHS (for debugging)
