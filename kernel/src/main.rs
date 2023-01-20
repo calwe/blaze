@@ -21,6 +21,7 @@ pub mod interrupts;
 pub mod io;
 pub mod loader;
 pub mod memory;
+pub mod scheduling;
 pub mod util;
 
 use core::arch::global_asm;
