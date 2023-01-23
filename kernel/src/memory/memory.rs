@@ -4,8 +4,7 @@ use limine::{LimineMemmapResponse, LimineMemoryMapEntryType};
 use x86_64::{
     registers::control::Cr3,
     structures::paging::{
-        page_table::FrameError, FrameAllocator, OffsetPageTable, PageTable, PhysFrame,
-        Size4KiB,
+        page_table::FrameError, FrameAllocator, OffsetPageTable, PageTable, PhysFrame, Size4KiB,
     },
     PhysAddr, VirtAddr,
 };
@@ -65,6 +64,9 @@ pub struct BootInfoFrameAllocator {
     memory_map: &'static LimineMemmapResponse,
     next: usize,
 }
+
+unsafe impl Sync for BootInfoFrameAllocator {}
+unsafe impl Send for BootInfoFrameAllocator {}
 
 impl BootInfoFrameAllocator {
     /// Initialize a new BootInfoFrameAllocator from the Limine memory map response.

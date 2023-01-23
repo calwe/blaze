@@ -102,13 +102,6 @@ pub fn load_elf_at_addr(addr: u64) -> Result<(u64, u64), ()> {
     let phentsize = elf_header.e_phentsize;
     trace!("{phnum} entries * {phentsize}B | 0x{phoff:x}");
 
-    let mmap_response = MEMORY_MAP
-        .get_response()
-        .get()
-        .expect("Bootloader did not respond to memory map request.");
-    let mut mapper = unsafe { memory::init(VirtAddr::new(0)) };
-    let mut frame_allocator = unsafe { BootInfoFrameAllocator::init(&mmap_response) };
-
     let mut stack_start = 0;
     for i in 0..phnum {
         let phaddr = (addr + phoff) + (phentsize * i) as u64;
@@ -121,7 +114,7 @@ pub fn load_elf_at_addr(addr: u64) -> Result<(u64, u64), ()> {
             // we then need to allocate the memory for the segment
             let start = program_header.p_vaddr;
             let size = program_header.p_memsz;
-            match allocate_of_size(&mut mapper, &mut frame_allocator, start, size, true) {
+            match allocate_of_size(start, size, true) {
                 Ok(()) => trace!("Succesfully allocated"),
                 Err(MapToError::ParentEntryHugePage) => warn!("Already allocted in huge page"),
                 Err(MapToError::PageAlreadyMapped(e)) => warn!("Already mapped {e:?}"),
@@ -154,13 +147,7 @@ pub fn load_elf_at_addr(addr: u64) -> Result<(u64, u64), ()> {
 
     // then we need to map the stack for the program
     trace!("Allocating stack for program");
-    match allocate_of_size(
-        &mut mapper,
-        &mut frame_allocator,
-        stack_start,
-        DEFAULT_STACK_SIZE,
-        true,
-    ) {
+    match allocate_of_size(stack_start, DEFAULT_STACK_SIZE, true) {
         Ok(()) => trace!("Succesfully allocated"),
         Err(MapToError::ParentEntryHugePage) => warn!("Already allocted in huge page"),
         Err(MapToError::PageAlreadyMapped(e)) => warn!("Already mapped {e:?}"),

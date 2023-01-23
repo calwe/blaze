@@ -7,7 +7,6 @@
 #![feature(abi_x86_interrupt)]
 #![feature(alloc_error_handler)]
 #![feature(ptr_metadata)]
-
 #![warn(missing_docs)]
 #![allow(non_camel_case_types)]
 
@@ -21,6 +20,7 @@ pub mod interrupts;
 pub mod io;
 pub mod loader;
 pub mod memory;
+pub mod threading;
 pub mod util;
 
 use core::arch::global_asm;
@@ -30,7 +30,10 @@ use limine::{
     LimineRsdpRequest,
 };
 
-use crate::cmdline::get_cmdline_vars;
+use crate::{
+    cmdline::get_cmdline_vars,
+    threading::{KThread, Task},
+};
 
 /// Information about the bootloader
 pub static BOOTLOADER_INFO: LimineBootInfoRequest = LimineBootInfoRequest::new(0);
@@ -62,8 +65,18 @@ pub extern "C" fn _start() -> ! {
     init::trace_info();
     init::kinit();
 
+    let task = Task::new(test_task as u64);
+    let thread = KThread::new(task);
+    thread.switch();
+
     info!("Kernel finished");
 
+    hcf();
+}
+
+#[no_mangle]
+pub extern "C" fn test_task() -> ! {
+    info!("Test task started");
     hcf();
 }
 

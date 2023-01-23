@@ -2,7 +2,8 @@
 
 use limine::LimineMemoryMapEntryType;
 use raw_cpuid::CpuId;
-use x86_64::VirtAddr;
+use spin::Mutex;
+use x86_64::{structures::paging::OffsetPageTable, VirtAddr};
 
 use crate::{
     acpi::{rsdp::RSDPDescriptor, rsdt::RSDT},
@@ -14,6 +15,9 @@ use crate::{
     },
     trace, BOOTLOADER_INFO, MEMORY_MAP, MODULES, RSDP,
 };
+
+pub static MAPPER: Mutex<Option<OffsetPageTable<'static>>> = Mutex::new(None);
+pub static FRAME_ALLOCATOR: Mutex<Option<BootInfoFrameAllocator>> = Mutex::new(None);
 
 /// The root init function for the kernel.
 pub fn kinit() {
@@ -50,14 +54,16 @@ fn init_memory() {
     trace!("Creating our frame allocator");
     let phys_mem_offset = VirtAddr::new(0);
     let mut mapper = unsafe { memory::init(phys_mem_offset) };
+    MAPPER.lock().replace(mapper);
     let mut frame_allocator = unsafe { BootInfoFrameAllocator::init(&mmap_response) };
+    FRAME_ALLOCATOR.lock().replace(frame_allocator);
 
     trace!(
         "Mapping kernel heap (0x{:x} -> 0x{:x})",
         HEAP_START,
         HEAP_START + HEAP_SIZE
     );
-    allocator::init_heap(&mut mapper, &mut frame_allocator).expect("initialising heap failed");
+    allocator::init_heap().expect("initialising heap failed");
 }
 
 fn init_acpi() {
@@ -113,5 +119,9 @@ fn cpu_info() {
         // CPU features: listed as needed
         info!("    CPU Features:");
         info!("        X2APIC: {}", fi.has_x2apic());
+        info!("        Family: {:#x}", fi.family_id());
+        info!("        Extended Model: {}", fi.extended_model_id());
+        info!("        Model: {:#x}", fi.model_id());
+        info!("        Stepping: {:#x}", fi.stepping_id());
     }
 }

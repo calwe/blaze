@@ -1,5 +1,6 @@
 //! Common functions for kernel allocators
 
+use spin::Mutex;
 use x86_64::{
     structures::paging::{
         mapper::MapToError, FrameAllocator, Mapper, Page, PageTableFlags, Size4KiB,
@@ -7,7 +8,11 @@ use x86_64::{
     VirtAddr,
 };
 
-use crate::{trace, util::WrappedMutex};
+use crate::{
+    init::{FRAME_ALLOCATOR, MAPPER},
+    trace,
+    util::WrappedMutex,
+};
 
 use super::bump_alloc::BumpAllocator;
 
@@ -21,17 +26,8 @@ pub const HEAP_SIZE: usize = 100 * 1024; // 100 KiB
 pub static ALLOCATOR: WrappedMutex<BumpAllocator> = WrappedMutex::new(BumpAllocator::new());
 
 /// Map the kernel heap in memory
-pub fn init_heap(
-    mapper: &mut impl Mapper<Size4KiB>,
-    frame_allocator: &mut impl FrameAllocator<Size4KiB>,
-) -> Result<(), MapToError<Size4KiB>> {
-    allocate_of_size(
-        mapper,
-        frame_allocator,
-        HEAP_START as u64,
-        HEAP_SIZE as u64,
-        false,
-    )?;
+pub fn init_heap() -> Result<(), MapToError<Size4KiB>> {
+    allocate_of_size(HEAP_START as u64, HEAP_SIZE as u64, false)?;
 
     ALLOCATOR.lock().init(HEAP_START, HEAP_SIZE);
 
@@ -39,17 +35,16 @@ pub fn init_heap(
 }
 
 /// Allocate a block of memory at a certain address
-pub fn allocate_of_size(
-    mapper: &mut impl Mapper<Size4KiB>,
-    frame_allocator: &mut impl FrameAllocator<Size4KiB>,
-    start: u64,
-    size: u64,
-    user: bool,
-) -> Result<(), MapToError<Size4KiB>> {
+pub fn allocate_of_size(start: u64, size: u64, user: bool) -> Result<(), MapToError<Size4KiB>> {
     trace!("Allocating memory block of size:");
     trace!("    Start: 0x{start:x}");
     trace!("    Size: {size}B");
     trace!("    User: {user}");
+
+    let mut mapper = MAPPER.lock();
+    let mapper = mapper.as_mut().expect("No mapper found");
+    let mut frame_allocator = FRAME_ALLOCATOR.lock();
+    let frame_allocator = frame_allocator.as_mut().expect("No frame allocator found");
 
     let page_range = {
         let start = VirtAddr::new(start);
