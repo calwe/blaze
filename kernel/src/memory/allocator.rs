@@ -3,9 +3,9 @@
 use spin::Mutex;
 use x86_64::{
     structures::paging::{
-        mapper::MapToError, FrameAllocator, Mapper, Page, PageTableFlags, Size4KiB,
+        mapper::MapToError, FrameAllocator, Mapper, Page, PageTableFlags, PhysFrame, Size4KiB,
     },
-    VirtAddr,
+    PhysAddr, VirtAddr,
 };
 
 use crate::{
@@ -67,6 +67,31 @@ pub fn allocate_of_size(start: u64, size: u64, user: bool) -> Result<(), MapToEr
         let _ = mapper.unmap(page);
         unsafe { mapper.map_to(page, frame, flags, frame_allocator)?.flush() }
     }
+
+    Ok(())
+}
+
+/// map physical address to virtual address
+pub fn map_phys_to_virt(phys: u64, virt: u64, user: bool) -> Result<(), MapToError<Size4KiB>> {
+    trace!("Mapping physical memory to virtual memory:");
+    trace!("    Physical: 0x{phys:x}");
+    trace!("    Virtual: 0x{virt:x}");
+    trace!("    User: {user}");
+
+    let mut mapper = MAPPER.lock();
+    let mapper = mapper.as_mut().expect("No mapper found");
+    let mut frame_allocator = FRAME_ALLOCATOR.lock();
+    let frame_allocator = frame_allocator.as_mut().expect("No frame allocator found");
+
+    let page: Page<Size4KiB> = Page::containing_address(VirtAddr::new(virt));
+
+    let frame = PhysFrame::containing_address(PhysAddr::new(phys));
+    let mut flags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE;
+    if user {
+        flags |= PageTableFlags::USER_ACCESSIBLE;
+    }
+
+    unsafe { mapper.map_to(page, frame, flags, frame_allocator)?.flush() }
 
     Ok(())
 }

@@ -25,6 +25,8 @@ lazy_static! {
         idt[0x80]
             .set_handler_fn(system_call)
             .set_privilege_level(PrivilegeLevel::Ring3);
+
+        idt[0x20].set_handler_fn(timer_interrupt_handler);
         idt
     };
 }
@@ -70,4 +72,8 @@ extern "x86-interrupt" fn gp_fault_handler(stack_frame: InterruptStackFrame, err
 
 extern "x86-interrupt" fn system_call(_: InterruptStackFrame) {
     info!("System call!");
+}
+
+extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: InterruptStackFrame) {
+    trace!("Timer interrupt");
 }

@@ -1,9 +1,9 @@
 use core::ptr::from_raw_parts;
 
-
 use core::fmt::Debug;
 
-use crate::warn;
+use crate::{trace, warn};
+use bitfield::bitfield;
 
 use super::rsdt::ACPISDTHeader;
 
@@ -108,7 +108,7 @@ impl MADT {
         // The header is at the start of the table.
         let header = unsafe { *(addr as *const ACPISDTHeader) };
         // Then we can figure out how many entries there are.
-        let entries = (header.length - core::mem::size_of::<ACPISDTHeader>() as u32 - 8) / 4;
+        let entries = header.length - core::mem::size_of::<ACPISDTHeader>() as u32 - 8;
         // The final field is a DST, so we need to use `from_raw_parts` to specify the length of the array.
         from_raw_parts(addr as *const (), entries as usize)
     }
@@ -184,7 +184,7 @@ pub struct IOAPIC {
     /// Reserved
     reserved: u8,
     /// I/O APIC Address
-    ioapic_address: u32,
+    pub ioapic_address: u32,
     /// Global System Interrupt Base
     global_system_interrupt_base: u32,
 }
@@ -199,6 +199,96 @@ impl IOAPIC {
             global_system_interrupt_base: u32::from_le_bytes([data[6], data[7], data[8], data[9]]),
         }
     }
+
+    /// Read from IOAPIC register
+    pub fn read(&self, reg: u8) -> u32 {
+        unsafe {
+            core::ptr::write_volatile(self.ioapic_address as *mut u32, reg as u32);
+            core::ptr::read_volatile((self.ioapic_address + 0x10) as *mut u32)
+        }
+    }
+
+    /// Write to IOAPIC register
+    pub fn write(&self, reg: u8, value: u32) {
+        unsafe {
+            core::ptr::write_volatile(self.ioapic_address as *mut u32, reg as u32);
+            core::ptr::write_volatile((self.ioapic_address + 0x10) as *mut u32, value);
+        }
+    }
+
+    /// Read table entry
+    pub fn read_table_entry(&self, index: u8) -> u64 {
+        let low = self.read(index * 2 + 0x10);
+        let high = self.read(index * 2 + 1 + 0x10);
+        u64::from_le_bytes([
+            low as u8,
+            (low >> 8) as u8,
+            (low >> 16) as u8,
+            (low >> 24) as u8,
+            high as u8,
+            (high >> 8) as u8,
+            (high >> 16) as u8,
+            (high >> 24) as u8,
+        ])
+    }
+
+    /// Write table entry
+    pub fn write_table_entry(&self, index: u8, entry: IOREDTBL) {
+        let value = entry.0;
+        let low = u32::from_le_bytes([
+            value as u8,
+            (value >> 8) as u8,
+            (value >> 16) as u8,
+            (value >> 24) as u8,
+        ]);
+        let high = u32::from_le_bytes([
+            (value >> 32) as u8,
+            (value >> 40) as u8,
+            (value >> 48) as u8,
+            (value >> 56) as u8,
+        ]);
+        self.write(index * 2 + 0x10, low);
+        self.write(index * 2 + 1 + 0x10, high);
+    }
+}
+
+bitfield! {
+    /// I/O Redirection Table Entry
+    pub struct IOREDTBL(u64);
+    impl Debug;
+    /// The interrupt vector that will be raised to the specified processor.
+    pub vector, set_vector: 7, 0;
+    /// The delivery mode of the interrupt.
+    /// 000: Fixed
+    /// 001: Lowest Priority
+    /// 010: SMI
+    /// 100: NMI
+    /// 101: INIT
+    /// 111: ExtINT
+    pub delivery_mode, set_delivery_mode: 10, 8;
+    /// The destination mode of the interrupt.
+    /// 0: Physical
+    /// 1: Logical
+    pub destination_mode, set_destination_mode: 11;
+    /// The delivery status of the interrupt.
+    pub delivery_status, set_delivery_status: 12;
+    /// The polarity of the interrupt.
+    /// 0: Active High
+    /// 1: Active Low
+    pub polarity, set_polarity: 13;
+    /// The remote IRR of the interrupt.
+    pub remote_irr, set_remote_irr: 14;
+    /// The trigger mode of the interrupt.
+    /// 0: Edge
+    /// 1: Level
+    pub trigger_mode, set_trigger_mode: 15;
+    /// The interrupt mask.
+    /// 0: Unmasked
+    /// 1: Masked
+    pub mask, set_mask: 16;
+    reserved, _: 55, 17;
+    /// The destination field of the interrupt.
+    pub destination, set_destination: 63, 56;
 }
 
 // TODO: Implement the rest of the MADT entry types.

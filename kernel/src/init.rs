@@ -1,19 +1,27 @@
 //! The init module contains the kernel's init function and other init related functions.
 
+use core::arch::asm;
+
 use limine::LimineMemoryMapEntryType;
 use raw_cpuid::CpuId;
 use spin::Mutex;
-use x86_64::{structures::paging::OffsetPageTable, VirtAddr};
+use x86_64::{instructions::port::Port, structures::paging::OffsetPageTable, VirtAddr};
 
 use crate::{
-    acpi::{rsdp::RSDPDescriptor, rsdt::RSDT},
+    acpi::{
+        madt::{MADTEntryTypes, IOREDTBL},
+        rsdp::RSDPDescriptor,
+        rsdt::RSDT,
+    },
     gdt, info, interrupts,
     memory::{
         self,
-        allocator::{self, HEAP_SIZE, HEAP_START},
+        allocator::{self, allocate_of_size, map_phys_to_virt, HEAP_SIZE, HEAP_START},
         BootInfoFrameAllocator,
     },
-    trace, BOOTLOADER_INFO, MEMORY_MAP, MODULES, RSDP,
+    trace,
+    util::trace_mem_16,
+    BOOTLOADER_INFO, MEMORY_MAP, MODULES, RSDP,
 };
 
 pub static MAPPER: Mutex<Option<OffsetPageTable<'static>>> = Mutex::new(None);
@@ -53,9 +61,9 @@ fn init_memory() {
 
     trace!("Creating our frame allocator");
     let phys_mem_offset = VirtAddr::new(0);
-    let mut mapper = unsafe { memory::init(phys_mem_offset) };
+    let mapper = unsafe { memory::init(phys_mem_offset) };
     MAPPER.lock().replace(mapper);
-    let mut frame_allocator = unsafe { BootInfoFrameAllocator::init(&mmap_response) };
+    let frame_allocator = unsafe { BootInfoFrameAllocator::init(&mmap_response) };
     FRAME_ALLOCATOR.lock().replace(frame_allocator);
 
     trace!(
@@ -67,6 +75,9 @@ fn init_memory() {
 }
 
 fn init_acpi() {
+    // first we need to disable the PIC
+    disable_pic();
+
     let rsdp_resp = RSDP
         .get_response()
         .get()
@@ -76,9 +87,80 @@ fn init_acpi() {
     let rsdt = unsafe { &*rsdt_ptr };
     let madt = unsafe { &*rsdt.get_madt().unwrap() };
     for entry in madt.entries() {
-        trace!("MADT Entry of type {:?}", entry.get_type());
+        trace!("MADT Entry of type {:x?}", entry.get_type());
+        match entry.get_type() {
+            Some(MADTEntryTypes::IOAPIC(ioapic)) => {
+                // map the ioapic into memory at addr 0xffff_aaaa_0000_0000;
+                // FIXME: do we need to find a better way to find mapping addresses?
+                map_phys_to_virt(ioapic.ioapic_address as u64, 0xffff_aaaa_0000_0000, false)
+                    .unwrap();
+
+                // TODO: registers enum
+                let maxirqs = (ioapic.read(1) >> 16) + 1;
+                trace!("IOAPIC max irqs: {}", maxirqs);
+
+                let mut test_entry = IOREDTBL(0);
+                test_entry.set_vector(0x20);
+
+                ioapic.write_table_entry(0, test_entry);
+                trace!(
+                    "IOAPIC entry 0: {:x?}",
+                    IOREDTBL(ioapic.read_table_entry(0))
+                );
+
+                let mut port = Port::new(0x43);
+                let value = 0x34u8;
+                unsafe {
+                    port.write(value);
+                }
+
+                let mut port = Port::new(0x40);
+                let count = 0xffff;
+                unsafe {
+                    port.write(count as u8 & 0xFF as u8);
+                    port.write(((count & 0x00FF) >> 8) as u8);
+                }
+
+                // renable interrupts
+                unsafe {
+                    asm!("sti", options(nostack, nomem, preserves_flags));
+                }
+            }
+            _ => {}
+        }
     }
     // TODO: Use the MADT for setting up the APIC (used for SMP)
+}
+
+fn disable_pic() {
+    trace!("Disabling PIC");
+
+    unsafe {
+        asm!("cli", options(nostack, nomem, preserves_flags));
+    }
+
+    mask_pic();
+
+    // TODO: rust abstraction
+    unsafe {
+        asm!(
+            "mov al, 0xff",
+            "out 0xa1, al",
+            "out 0x21, al",
+            options(nostack, nomem, preserves_flags)
+        );
+    }
+}
+
+fn mask_pic() {
+    trace!("Masking all entries in the PIC");
+
+    let mut pic1 = Port::new(0x21);
+    let mut pic2 = Port::new(0xa1);
+    unsafe {
+        pic1.write(0xffu8);
+        pic2.write(0xffu8);
+    }
 }
 
 #[allow(dead_code)]

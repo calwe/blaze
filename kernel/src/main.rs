@@ -23,7 +23,7 @@ pub mod memory;
 pub mod threading;
 pub mod util;
 
-use core::arch::global_asm;
+use core::arch::{asm, global_asm};
 
 use limine::{
     LimineBootInfoRequest, LimineKernelFileRequest, LimineMemmapRequest, LimineModuleRequest,
@@ -67,7 +67,7 @@ pub extern "C" fn _start() -> ! {
 
     let task = Task::new(test_task as u64);
     let thread = KThread::new(task);
-    thread.switch();
+    //thread.switch();
 
     info!("Kernel finished");
 
@@ -94,6 +94,9 @@ fn alloc_error_handler(layout: alloc::alloc::Layout) -> ! {
 /// Die, spectacularly.
 pub fn hcf() -> ! {
     loop {
-        core::hint::spin_loop();
+        unsafe {
+            asm!("hlt");
+        }
+        // core::hint::spin_loop();
     }
 }
