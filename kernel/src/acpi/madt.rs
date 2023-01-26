@@ -89,7 +89,8 @@ impl MADTEntry {
                 &self.data,
             ))),
             1 => Some(MADTEntryTypes::IOAPIC(IOAPIC::new(&self.data))),
-            2 => Some(MADTEntryTypes::InterruptSourceOverride),
+            2 => Some(MADTEntryTypes::InterruptSourceOverride(
+                InterruptSourceOverride::new(&self.data))),
             3 => Some(MADTEntryTypes::IOAPICNMISource),
             4 => Some(MADTEntryTypes::LocalAPICNMI),
             5 => Some(MADTEntryTypes::LocalAPICAddressOverride),
@@ -120,6 +121,31 @@ impl MADT {
             index: 0,
         }
     }
+
+    /// Returns the address of the local APIC.
+    pub fn local_apic_address(&self) -> u32 {
+        self.local_apic_address
+    }
+
+    pub fn write_apic_reg(&self, reg: u32, value: u32) {
+        let register_location = self.local_apic_address + reg;
+        unsafe {
+            core::ptr::write_volatile(register_location as *mut u32, value);
+        }
+    }
+
+    pub fn read_apic_reg(&self, reg: u32) -> u32 {
+        let register_location = self.local_apic_address + reg;
+        unsafe { core::ptr::read_volatile(register_location as *const u32) }
+    }
+
+    // FIXME: This is a BAD hack to test the APIC. The APIC address should NOT be hardcoded.
+    pub fn write_apic_reg_HACK(reg: u32, value: u32) {
+        let register_location = 0xFEE00000 + reg;
+        unsafe {
+            core::ptr::write_volatile(register_location as *mut u32, value);
+        }
+    }
 }
 
 // ----------------------------------------------------------------------------
@@ -136,7 +162,7 @@ pub enum MADTEntryTypes {
     IOAPIC(IOAPIC),
     /// Interrupt Source Override. This entry describes an interrupt source that is
     /// mapped to a different interrupt vector.
-    InterruptSourceOverride,
+    InterruptSourceOverride(InterruptSourceOverride),
     /// Specifies the interrupt sources that are used for Non-Maskable Interrupts.
     IOAPICNMISource,
     /// Configure these with the LINT0 and LINT1 entries in the Local vector
@@ -289,6 +315,25 @@ bitfield! {
     reserved, _: 55, 17;
     /// The destination field of the interrupt.
     pub destination, set_destination: 63, 56;
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct InterruptSourceOverride {
+    bus: u8,
+    source: u8,
+    global_system_interrupt: u32,
+    flags: u16,
+}
+
+impl InterruptSourceOverride {
+    pub fn new(data: &[u8]) -> Self {
+        Self {
+            bus: data[0],
+            source: data[1],
+            global_system_interrupt: u32::from_le_bytes([data[2], data[3], data[4], data[5]]),
+            flags: u16::from_le_bytes([data[6], data[7]]),
+        }
+    }
 }
 
 // TODO: Implement the rest of the MADT entry types.

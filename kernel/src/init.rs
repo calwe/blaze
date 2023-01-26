@@ -86,6 +86,11 @@ fn init_acpi() {
     let rsdt_ptr = RSDT::from_addr(rsdp.rsdt_address());
     let rsdt = unsafe { &*rsdt_ptr };
     let madt = unsafe { &*rsdt.get_madt().unwrap() };
+
+    trace!("Local APIC Addr: {:#x}", madt.local_apic_address());
+    let spi = madt.read_apic_reg(0xf0);
+    trace!("SPI: {:#x}", spi);
+
     for entry in madt.entries() {
         trace!("MADT Entry of type {:x?}", entry.get_type());
         match entry.get_type() {
@@ -100,31 +105,36 @@ fn init_acpi() {
                 trace!("IOAPIC max irqs: {}", maxirqs);
 
                 let mut test_entry = IOREDTBL(0);
-                test_entry.set_vector(0x20);
+                test_entry.set_vector(0x30);
 
-                ioapic.write_table_entry(0, test_entry);
+                ioapic.write_table_entry(2, test_entry);
                 trace!(
                     "IOAPIC entry 0: {:x?}",
-                    IOREDTBL(ioapic.read_table_entry(0))
+                    IOREDTBL(ioapic.read_table_entry(2))
                 );
 
+                trace!("Enabling PIT");
                 let mut port = Port::new(0x43);
-                let value = 0x34u8;
+                let value = 0x36u8;
                 unsafe {
                     port.write(value);
                 }
 
+                trace!("Starting PIT");
                 let mut port = Port::new(0x40);
-                let count = 0xffff;
+                let count = 0x1234;
                 unsafe {
                     port.write(count as u8 & 0xFF as u8);
                     port.write(((count & 0x00FF) >> 8) as u8);
                 }
+                trace!("PIT started");
 
                 // renable interrupts
                 unsafe {
                     asm!("sti", options(nostack, nomem, preserves_flags));
                 }
+
+                trace!("Interrupts enabled");
             }
             _ => {}
         }
