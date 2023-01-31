@@ -2,7 +2,7 @@ use core::ptr::from_raw_parts;
 
 use core::fmt::Debug;
 
-use crate::{trace, warn};
+use crate::warn;
 use bitfield::bitfield;
 
 use super::rsdt::ACPISDTHeader;
@@ -90,7 +90,8 @@ impl MADTEntry {
             ))),
             1 => Some(MADTEntryTypes::IOAPIC(IOAPIC::new(&self.data))),
             2 => Some(MADTEntryTypes::InterruptSourceOverride(
-                InterruptSourceOverride::new(&self.data))),
+                InterruptSourceOverride::new(&self.data),
+            )),
             3 => Some(MADTEntryTypes::IOAPICNMISource),
             4 => Some(MADTEntryTypes::LocalAPICNMI),
             5 => Some(MADTEntryTypes::LocalAPICAddressOverride),
@@ -127,6 +128,7 @@ impl MADT {
         self.local_apic_address
     }
 
+    /// Write 4 bytes to an LAPIC reg
     pub fn write_apic_reg(&self, reg: u32, value: u32) {
         let register_location = self.local_apic_address + reg;
         unsafe {
@@ -134,12 +136,15 @@ impl MADT {
         }
     }
 
+    /// Read 4 bytes from an LAPIC reg
     pub fn read_apic_reg(&self, reg: u32) -> u32 {
         let register_location = self.local_apic_address + reg;
         unsafe { core::ptr::read_volatile(register_location as *const u32) }
     }
 
     // FIXME: This is a BAD hack to test the APIC. The APIC address should NOT be hardcoded.
+    /// Write 4 bytes to a LAPIC reg, hardcoded location
+    #[allow(non_snake_case)]
     pub fn write_apic_reg_HACK(reg: u32, value: u32) {
         let register_location = 0xFEE00000 + reg;
         unsafe {
@@ -318,14 +323,21 @@ bitfield! {
 }
 
 #[derive(Debug, Clone, Copy)]
+/// Interrupt Source Override
+#[allow(dead_code)]
 pub struct InterruptSourceOverride {
+    /// Bus
     bus: u8,
+    /// Source
     source: u8,
+    /// GSI
     global_system_interrupt: u32,
+    /// Flags
     flags: u16,
 }
 
 impl InterruptSourceOverride {
+    /// Create a new ISO from data
     pub fn new(data: &[u8]) -> Self {
         Self {
             bus: data[0],

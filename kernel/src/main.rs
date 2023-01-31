@@ -30,10 +30,7 @@ use limine::{
     LimineRsdpRequest,
 };
 
-use crate::{
-    cmdline::get_cmdline_vars,
-    threading::{KThread, Task},
-};
+use crate::cmdline::get_cmdline_vars;
 
 /// Information about the bootloader
 pub static BOOTLOADER_INFO: LimineBootInfoRequest = LimineBootInfoRequest::new(0);
@@ -75,6 +72,7 @@ pub extern "C" fn _start() -> ! {
 }
 
 #[no_mangle]
+/// Simple task to test the scheduler
 pub extern "C" fn test_task() -> ! {
     info!("Test task started");
     hcf();

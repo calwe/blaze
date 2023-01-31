@@ -1,6 +1,5 @@
 //! Common functions for kernel allocators
 
-use spin::Mutex;
 use x86_64::{
     structures::paging::{
         mapper::MapToError, FrameAllocator, Mapper, Page, PageTableFlags, PhysFrame, Size4KiB,

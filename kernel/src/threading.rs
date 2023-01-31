@@ -2,11 +2,7 @@
 
 use core::{arch::global_asm, sync::atomic::AtomicU16};
 
-use crate::{
-    init::{FRAME_ALLOCATOR, MAPPER},
-    memory::allocator::allocate_of_size,
-    trace,
-};
+use crate::{memory::allocator::allocate_of_size, trace};
 
 static NEXT_TID: AtomicU16 = AtomicU16::new(0);
 
@@ -23,6 +19,7 @@ pub struct KThread {
     task: Task,
 }
 
+/// The task for a KThread
 pub struct Task {
     /// The address of the task's stack
     stack: u64,
@@ -31,6 +28,7 @@ pub struct Task {
 }
 
 impl Task {
+    /// Create a new task that starts at the given memory address
     pub fn new(entry: u64) -> Self {
         // FIXME: Temporary stack location for task
         let stack = 0xffff_ffff_cafe_0000;
@@ -59,6 +57,7 @@ impl KThread {
         Self { tid, task }
     }
 
+    /// Switch to this kthread
     pub fn switch(&self) {
         unsafe {
             _switch_stack(self.task.stack, self.task.entry);

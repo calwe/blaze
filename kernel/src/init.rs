@@ -1,7 +1,6 @@
 //! The init module contains the kernel's init function and other init related functions.
 
 use core::{arch::asm, borrow::BorrowMut};
-use spin::MutexGuard;
 
 use limine::LimineMemoryMapEntryType;
 use raw_cpuid::CpuId;
@@ -10,23 +9,23 @@ use x86_64::{instructions::port::Port, structures::paging::OffsetPageTable, Virt
 
 use crate::{
     acpi::{
-        hpet::{GLOBAL_HPET, HPET},
+        hpet::{global_hpet, GLOBAL_HPET},
         madt::{MADTEntryTypes, IOREDTBL},
         rsdp::RSDPDescriptor,
         rsdt::RSDT,
     },
-    gdt, hcf, info, interrupts,
+    gdt, info, interrupts,
     memory::{
         self,
-        allocator::{self, allocate_of_size, map_phys_to_virt, HEAP_SIZE, HEAP_START},
+        allocator::{self, HEAP_SIZE, HEAP_START},
         BootInfoFrameAllocator,
     },
-    trace,
-    util::trace_mem_16,
-    BOOTLOADER_INFO, MEMORY_MAP, MODULES, RSDP,
+    trace, BOOTLOADER_INFO, MEMORY_MAP, MODULES, RSDP,
 };
 
+/// Global PageTable mapper used in the kernel
 pub static MAPPER: Mutex<Option<OffsetPageTable<'static>>> = Mutex::new(None);
+/// Global physical frame allocator, using the BootInfo from Limine
 pub static FRAME_ALLOCATOR: Mutex<Option<BootInfoFrameAllocator>> = Mutex::new(None);
 
 /// The root init function for the kernel.
@@ -36,9 +35,17 @@ pub fn kinit() {
     init_memory();
     init_acpi();
 
-    trace!("Sleeping");
-    global_hpet().sleep(2000);
-    trace!("Back!");
+    info!("Sleeping for 1s");
+    global_hpet().sleep(1000);
+    info!("Back!");
+
+    info!("Sleeping for 500ms");
+    global_hpet().sleep(500);
+    info!("Back!");
+
+    info!("Sleeping for 100ms");
+    global_hpet().sleep(100);
+    info!("Back!");
 
     info!("Everything initialized.");
 }
@@ -84,6 +91,7 @@ fn init_acpi() {
     // first we need to disable the PIC
     disable_pic();
 
+    // then we get the RSDT so that we can parse the ACPI tables
     let rsdp_resp = RSDP
         .get_response()
         .get()
@@ -93,91 +101,53 @@ fn init_acpi() {
     let rsdt = unsafe { &*rsdt_ptr };
 
     // HPET
+    // we find the HPET in the RSDT and assign this into a global
     unsafe {
         *GLOBAL_HPET.borrow_mut() = Some(Mutex::new(rsdt.get_hpet().unwrap()));
     };
+    // then it can be initialsed for future use.
     global_hpet().init();
 
     // MADT
+    // the MADT contains infomation we need to initialise the LocalAPICs and the IOAPICs
     let madt = unsafe { &*rsdt.get_madt().unwrap() };
-
-    trace!("Local APIC Addr: {:#x}", madt.local_apic_address());
-    let spi = madt.read_apic_reg(0xf0);
-    trace!("SPI: {:#x}", spi);
-
+    // TODO: Should this be moved into a MADT initialisation function?
     for entry in madt.entries() {
         trace!("MADT Entry of type {:x?}", entry.get_type());
+        // There are multiple types of entries in the MADT, such as InterruptSourceOverrides,
+        // and also IOAPICs vs LocalAPICs
         match entry.get_type() {
             Some(MADTEntryTypes::IOAPIC(ioapic)) => {
-                // map the ioapic into memory at addr 0xffff_aaaa_0000_0000;
-                // FIXME: do we need to find a better way to find mapping addresses?
-                map_phys_to_virt(ioapic.ioapic_address as u64, 0xffff_aaaa_0000_0000, false)
-                    .unwrap();
+                // we have no need to map the IOAPIC, as it is already identity mapped by Lamine
+                // TODO: should we replace Limine's virtual mapping with our own?
 
                 // TODO: registers enum
                 let maxirqs = (ioapic.read(1) >> 16) + 1;
                 trace!("IOAPIC max irqs: {}", maxirqs);
 
-                // read current entry 0
+                // TODO: Remove all this. We do not want to manually setup each entry like this
+                //          - we should have this in a function so that we can setup any interrupt we want
                 trace!(
                     "IOAPIC entry 16: {:x?}",
                     IOREDTBL(ioapic.read_table_entry(17))
                 );
-
                 let mut test_entry = IOREDTBL(0);
                 test_entry.set_vector(0x41);
-
                 ioapic.write_table_entry(17, test_entry);
                 trace!(
                     "IOAPIC entry 16: {:x?}",
                     IOREDTBL(ioapic.read_table_entry(17))
                 );
 
-                // trace!("Enabling PIT");
-                // let mut port = Port::new(0x43);
-                // let value = 0x34u8;
-                // unsafe {
-                //     port.write(value);
-                // }
-
-                // trace!("Starting PIT");
-                // let mut port = Port::new(0x40);
-                // let count = 0xffff;
-                // unsafe {
-                //     port.write((count & 0xFF) as u8);
-                //     port.write(((count & 0xFF00) >> 8) as u8);
-                // }
-                // trace!("PIT started");
-
-                // read the PIT count
-                // let mut count: u16 = 0;
-                // unsafe {
-                //     Port::new(0x43).write(0u8);
-                //     count = Port::<u8>::new(0x40).read() as u16;
-                //     count |= (Port::<u8>::new(0x40).read() as u16) << 8;
-                // }
-                // trace!("PIT count: {:#x}", count);
-
                 // renable interrupts
                 unsafe {
                     asm!("sti", options(nostack, nomem, preserves_flags));
                 }
-
-                trace!("Interrupts enabled");
             }
+            // TODO: Parse the other MADT entrys
             _ => {}
         }
     }
-    // TODO: Use the MADT for setting up the APIC (used for SMP)
-
-    // trace!("Sleeping...");
-    // global_hpet().sleep(100);
-    // trace!("Back!");
-}
-
-// FIXME: Move this function?
-pub fn global_hpet() -> MutexGuard<'static, &'static HPET> {
-    unsafe { GLOBAL_HPET.as_ref().unwrap().lock() }
 }
 
 fn disable_pic() {

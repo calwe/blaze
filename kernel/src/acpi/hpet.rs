@@ -1,20 +1,18 @@
-use core::{sync::atomic::Ordering, time};
+use core::sync::atomic::Ordering;
+use spin::MutexGuard;
 
-use crate::{
-    error,
-    interrupts::{SLEEP_TICKS, U_SLEEP_TICKS},
-    print, println, trace,
-};
+use crate::{error, interrupts::SLEEP_TICKS, trace};
 
 use super::rsdt::ACPISDTHeader;
 use alloc::vec::Vec;
 use bitfield::bitfield;
-use lazy_static::lazy_static;
 use spin::Mutex;
 use x86_64::instructions::hlt;
 
+/// A global instane of the HPET
 pub static mut GLOBAL_HPET: Option<Mutex<&'static HPET>> = None;
 
+#[allow(dead_code)]
 enum Registers64 {
     GeneralCapibilities = 0x00,
     GeneralConfiguration = 0x10,
@@ -67,6 +65,7 @@ impl HPET {
         unsafe { &*(addr as *const HPET) }
     }
 
+    /// Initialise the HPET and its associated comparitor timers
     pub fn init(&self) {
         let addr = self.address.address;
         trace!("HPET address: {:#x}", addr);
@@ -78,6 +77,7 @@ impl HPET {
             GeneralConfiguration(self.read_register64(Registers64::GeneralConfiguration));
         trace!("HPET general config: {:?}", general_config);
 
+        // TODO: should we not assign timers as needed?
         let timer_count = general_cap.num_tim_cap() + 1;
         if timer_count <= 0 {
             panic!("No HPET timers found!");
@@ -111,7 +111,7 @@ impl HPET {
         self.write_register64(Registers64::GeneralConfiguration, general_config.0 | 1);
     }
 
-    // FIXME: Move this elsewhere
+    // FIXME: Move this elsewhere?
     /// sleep for a fixed duration, in ms
     pub fn sleep(&self, time_in_ms: u64) {
         SLEEP_TICKS.swap(time_in_ms, Ordering::Relaxed);
@@ -119,13 +119,6 @@ impl HPET {
         while SLEEP_TICKS.load(Ordering::Relaxed) != 0 {
             hlt();
         }
-        // unsafe {
-        //     U_SLEEP_TICKS = time_in_ms;
-        //     self.periodic_init(1);
-        //     while U_SLEEP_TICKS != 0 {
-        //         hlt();
-        //     }
-        // }
         self.disable_n_timer(1);
     }
 
@@ -144,6 +137,7 @@ impl HPET {
         self.enable_n_timer(0);
     }
 
+    /// Periodically send an interrupt at a frequency given in ms
     pub fn periodic_init(&self, time_in_ms: u64) {
         trace!("Setting up periodic mode");
         let general_cap =
@@ -197,6 +191,7 @@ impl HPET {
         trace!("{:?}", timer1_conf);
     }
 
+    /// Disable timer n
     pub fn disable_n_timer(&self, timer: u8) {
         let mut tim = TimerNConfiguration(self.read_n_config(timer));
         tim.set_init_enb_cnf(false);
@@ -237,6 +232,7 @@ impl HPET {
         unsafe { core::ptr::write_volatile(addr as *mut u64, value) }
     }
 
+    #[allow(dead_code)]
     fn read_n_comparator(&self, n: u8) -> u64 {
         let addr = self.address.address;
         let addr = addr + 0x108 + (n as u64 * 0x20);
@@ -300,3 +296,8 @@ impl TimerNConfiguration {
 }
 
 // TODO: The rest of them...
+
+/// Get a locked reference to the global hpet
+pub fn global_hpet() -> MutexGuard<'static, &'static HPET> {
+    unsafe { GLOBAL_HPET.as_ref().unwrap().lock() }
+}

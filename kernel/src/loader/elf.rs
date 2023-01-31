@@ -2,13 +2,9 @@
 
 use core::ptr;
 
-use x86_64::{align_up, structures::paging::mapper::MapToError, VirtAddr};
+use x86_64::{align_up, structures::paging::mapper::MapToError};
 
-use crate::{
-    error,
-    memory::{self, allocator::allocate_of_size, BootInfoFrameAllocator},
-    trace, warn, MEMORY_MAP,
-};
+use crate::{error, memory::allocator::allocate_of_size, trace, warn};
 
 type Elf64_Addr = u64;
 type Elf64_Off = u64;
