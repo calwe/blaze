@@ -65,8 +65,8 @@ pub extern "C" fn _start() -> ! {
     init::trace_info();
     init::kinit();
 
-    let task = Task::new(test_task as u64);
-    let thread = KThread::new(task);
+    // let task = Task::new(test_task as u64);
+    // let thread = KThread::new(task);
     //thread.switch();
 
     info!("Kernel finished");

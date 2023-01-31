@@ -1,6 +1,7 @@
 //! The init module contains the kernel's init function and other init related functions.
 
-use core::arch::asm;
+use core::{arch::asm, borrow::BorrowMut};
+use spin::MutexGuard;
 
 use limine::LimineMemoryMapEntryType;
 use raw_cpuid::CpuId;
@@ -9,11 +10,12 @@ use x86_64::{instructions::port::Port, structures::paging::OffsetPageTable, Virt
 
 use crate::{
     acpi::{
+        hpet::{GLOBAL_HPET, HPET},
         madt::{MADTEntryTypes, IOREDTBL},
         rsdp::RSDPDescriptor,
         rsdt::RSDT,
     },
-    gdt, info, interrupts,
+    gdt, hcf, info, interrupts,
     memory::{
         self,
         allocator::{self, allocate_of_size, map_phys_to_virt, HEAP_SIZE, HEAP_START},
@@ -33,6 +35,10 @@ pub fn kinit() {
     interrupts::init();
     init_memory();
     init_acpi();
+
+    trace!("Sleeping");
+    global_hpet().sleep(2000);
+    trace!("Back!");
 
     info!("Everything initialized.");
 }
@@ -85,6 +91,14 @@ fn init_acpi() {
     let rsdp = RSDPDescriptor::from_rsdp_response(rsdp_resp);
     let rsdt_ptr = RSDT::from_addr(rsdp.rsdt_address());
     let rsdt = unsafe { &*rsdt_ptr };
+
+    // HPET
+    unsafe {
+        *GLOBAL_HPET.borrow_mut() = Some(Mutex::new(rsdt.get_hpet().unwrap()));
+    };
+    global_hpet().init();
+
+    // MADT
     let madt = unsafe { &*rsdt.get_madt().unwrap() };
 
     trace!("Local APIC Addr: {:#x}", madt.local_apic_address());
@@ -104,30 +118,45 @@ fn init_acpi() {
                 let maxirqs = (ioapic.read(1) >> 16) + 1;
                 trace!("IOAPIC max irqs: {}", maxirqs);
 
-                let mut test_entry = IOREDTBL(0);
-                test_entry.set_vector(0x30);
-
-                ioapic.write_table_entry(2, test_entry);
+                // read current entry 0
                 trace!(
-                    "IOAPIC entry 0: {:x?}",
-                    IOREDTBL(ioapic.read_table_entry(2))
+                    "IOAPIC entry 16: {:x?}",
+                    IOREDTBL(ioapic.read_table_entry(17))
                 );
 
-                trace!("Enabling PIT");
-                let mut port = Port::new(0x43);
-                let value = 0x36u8;
-                unsafe {
-                    port.write(value);
-                }
+                let mut test_entry = IOREDTBL(0);
+                test_entry.set_vector(0x41);
 
-                trace!("Starting PIT");
-                let mut port = Port::new(0x40);
-                let count = 0x1234;
-                unsafe {
-                    port.write(count as u8 & 0xFF as u8);
-                    port.write(((count & 0x00FF) >> 8) as u8);
-                }
-                trace!("PIT started");
+                ioapic.write_table_entry(17, test_entry);
+                trace!(
+                    "IOAPIC entry 16: {:x?}",
+                    IOREDTBL(ioapic.read_table_entry(17))
+                );
+
+                // trace!("Enabling PIT");
+                // let mut port = Port::new(0x43);
+                // let value = 0x34u8;
+                // unsafe {
+                //     port.write(value);
+                // }
+
+                // trace!("Starting PIT");
+                // let mut port = Port::new(0x40);
+                // let count = 0xffff;
+                // unsafe {
+                //     port.write((count & 0xFF) as u8);
+                //     port.write(((count & 0xFF00) >> 8) as u8);
+                // }
+                // trace!("PIT started");
+
+                // read the PIT count
+                // let mut count: u16 = 0;
+                // unsafe {
+                //     Port::new(0x43).write(0u8);
+                //     count = Port::<u8>::new(0x40).read() as u16;
+                //     count |= (Port::<u8>::new(0x40).read() as u16) << 8;
+                // }
+                // trace!("PIT count: {:#x}", count);
 
                 // renable interrupts
                 unsafe {
@@ -140,6 +169,15 @@ fn init_acpi() {
         }
     }
     // TODO: Use the MADT for setting up the APIC (used for SMP)
+
+    // trace!("Sleeping...");
+    // global_hpet().sleep(100);
+    // trace!("Back!");
+}
+
+// FIXME: Move this function?
+pub fn global_hpet() -> MutexGuard<'static, &'static HPET> {
+    unsafe { GLOBAL_HPET.as_ref().unwrap().lock() }
 }
 
 fn disable_pic() {

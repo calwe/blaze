@@ -1,16 +1,21 @@
 //! Functions for our interrupt handlers
 
-use core::{arch::asm, sync::atomic::AtomicU8};
+use core::{
+    arch::asm,
+    sync::atomic::{AtomicU64, Ordering},
+};
 
 use lazy_static::lazy_static;
 use x86_64::{
+    instructions::port::Port,
     structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode},
     PrivilegeLevel,
 };
 
-use crate::{fatal, gdt, info, trace, warn, acpi::madt::MADT};
+use crate::{acpi::madt::MADT, fatal, gdt, info, init::global_hpet, trace, warn};
 
-static TIMER_TICKS: AtomicU8 = AtomicU8::new(0);
+pub static SLEEP_TICKS: AtomicU64 = AtomicU64::new(0);
+pub static mut U_SLEEP_TICKS: u64 = 0;
 
 lazy_static! {
     static ref IDT: InterruptDescriptorTable = {
@@ -30,7 +35,8 @@ lazy_static! {
             .set_handler_fn(system_call)
             .set_privilege_level(PrivilegeLevel::Ring3);
 
-        idt[0x30].set_handler_fn(timer_interrupt_handler);
+        idt[0x40].set_handler_fn(timer_interrupt_handler);
+        idt[0x41].set_handler_fn(sleep_handler);
         idt
     };
 }
@@ -79,7 +85,6 @@ extern "x86-interrupt" fn system_call(_: InterruptStackFrame) {
 }
 
 extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: InterruptStackFrame) {
-    unsafe { asm!("cli") }
     // if TIMER_TICKS.load(core::sync::atomic::Ordering::Relaxed) == 100 {
     //     info!("Timer interrupt");
     //     TIMER_TICKS.store(0, core::sync::atomic::Ordering::Relaxed);
@@ -89,5 +94,17 @@ extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: InterruptStackFr
 
     // Send an EOI to the APIC
     MADT::write_apic_reg_HACK(0xB0, 0);
-    unsafe { asm!("sti") }
+}
+
+extern "x86-interrupt" fn sleep_handler(_: InterruptStackFrame) {
+    if SLEEP_TICKS.load(Ordering::Relaxed) != 0 {
+        SLEEP_TICKS.fetch_sub(1, Ordering::Relaxed);
+    }
+    // unsafe {
+    //     if U_SLEEP_TICKS != 0 {
+    //         U_SLEEP_TICKS -= 1;
+    //     }
+    // }
+
+    MADT::write_apic_reg_HACK(0xB0, 0);
 }
