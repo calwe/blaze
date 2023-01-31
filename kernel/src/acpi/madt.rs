@@ -2,8 +2,9 @@ use core::ptr::from_raw_parts;
 
 use core::fmt::Debug;
 
-use crate::warn;
+use crate::{trace, warn};
 use bitfield::bitfield;
+use spin::Mutex;
 
 use super::rsdt::ACPISDTHeader;
 
@@ -206,6 +207,36 @@ impl ProcessorLocalAPIC {
     }
 }
 
+/// Global list of free interrupt sources, where a 1 is taken, 0 is free
+pub static FREE_INTERRUPT_SOURCES: Mutex<InterruptSources> =
+    // 0-2 and 8 are not free by default.
+    Mutex::new(InterruptSources(1 | 1 << 1 | 1 << 2 | 1 << 8));
+
+/// The first IOAPIC in the system
+// TODO: Do we need to change how we are accessing this?
+//          we need to keep in mind that systems can have multiple IOAPICs
+pub static IOAPIC_0: Mutex<Option<IOAPIC>> = Mutex::new(None);
+
+/// list of free interrupt sources, where a 1 is taken, 0 is free
+pub struct InterruptSources(u64);
+
+impl InterruptSources {
+    /// Set the bit of a given irq
+    pub fn set_irq(&mut self, irq: u8) {
+        self.0 |= 1 << irq;
+    }
+
+    /// Clear the bit of a given irq
+    pub fn clear_irq(&mut self, irq: u8) {
+        self.0 &= 0 << irq;
+    }
+
+    /// Return whether or not a irq is free
+    pub fn get_irq(&mut self, irq: u8) -> bool {
+        self.0 & (1 << irq) == 0
+    }
+}
+
 /// I/O APIC
 #[derive(Debug, Clone, Copy)]
 #[allow(dead_code)]
@@ -280,6 +311,15 @@ impl IOAPIC {
         ]);
         self.write(index * 2 + 0x10, low);
         self.write(index * 2 + 1 + 0x10, high);
+    }
+
+    /// Write default table entry, with given vector for redirection
+    pub fn standard_table_entry(&self, irq: u8, vector: u8) {
+        trace!("Mapping IRQ{irq} to IDT[{vector}]");
+        let mut standard_entry = IOREDTBL(0);
+        standard_entry.set_vector(vector as u64);
+        FREE_INTERRUPT_SOURCES.lock().set_irq(irq);
+        self.write_table_entry(irq, standard_entry);
     }
 }
 

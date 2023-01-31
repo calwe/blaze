@@ -10,7 +10,7 @@ use x86_64::{instructions::port::Port, structures::paging::OffsetPageTable, Virt
 use crate::{
     acpi::{
         hpet::{global_hpet, GLOBAL_HPET},
-        madt::{MADTEntryTypes, IOREDTBL},
+        madt::{MADTEntryTypes, IOAPIC_0},
         rsdp::RSDPDescriptor,
         rsdt::RSDT,
     },
@@ -20,7 +20,7 @@ use crate::{
         allocator::{self, HEAP_SIZE, HEAP_START},
         BootInfoFrameAllocator,
     },
-    trace, BOOTLOADER_INFO, MEMORY_MAP, MODULES, RSDP,
+    trace, warn, BOOTLOADER_INFO, MEMORY_MAP, MODULES, RSDP,
 };
 
 /// Global PageTable mapper used in the kernel
@@ -88,9 +88,6 @@ fn init_memory() {
 }
 
 fn init_acpi() {
-    // first we need to disable the PIC
-    disable_pic();
-
     // then we get the RSDT so that we can parse the ACPI tables
     let rsdp_resp = RSDP
         .get_response()
@@ -100,16 +97,11 @@ fn init_acpi() {
     let rsdt_ptr = RSDT::from_addr(rsdp.rsdt_address());
     let rsdt = unsafe { &*rsdt_ptr };
 
-    // HPET
-    // we find the HPET in the RSDT and assign this into a global
-    unsafe {
-        *GLOBAL_HPET.borrow_mut() = Some(Mutex::new(rsdt.get_hpet().unwrap()));
-    };
-    // then it can be initialsed for future use.
-    global_hpet().init();
-
     // MADT
     // the MADT contains infomation we need to initialise the LocalAPICs and the IOAPICs
+    // first we need to disable the PIC
+    disable_pic();
+
     let madt = unsafe { &*rsdt.get_madt().unwrap() };
     // TODO: Should this be moved into a MADT initialisation function?
     for entry in madt.entries() {
@@ -118,26 +110,13 @@ fn init_acpi() {
         // and also IOAPICs vs LocalAPICs
         match entry.get_type() {
             Some(MADTEntryTypes::IOAPIC(ioapic)) => {
-                // we have no need to map the IOAPIC, as it is already identity mapped by Lamine
-                // TODO: should we replace Limine's virtual mapping with our own?
-
-                // TODO: registers enum
-                let maxirqs = (ioapic.read(1) >> 16) + 1;
-                trace!("IOAPIC max irqs: {}", maxirqs);
-
-                // TODO: Remove all this. We do not want to manually setup each entry like this
-                //          - we should have this in a function so that we can setup any interrupt we want
-                trace!(
-                    "IOAPIC entry 16: {:x?}",
-                    IOREDTBL(ioapic.read_table_entry(17))
-                );
-                let mut test_entry = IOREDTBL(0);
-                test_entry.set_vector(0x41);
-                ioapic.write_table_entry(17, test_entry);
-                trace!(
-                    "IOAPIC entry 16: {:x?}",
-                    IOREDTBL(ioapic.read_table_entry(17))
-                );
+                let ioapic0 = *IOAPIC_0.lock();
+                if let Some(_) = ioapic0 {
+                    warn!("Multiple IOAPICs found, yet only 1 is supported. Ignored.");
+                    continue;
+                } else {
+                    IOAPIC_0.lock().replace(ioapic);
+                }
 
                 // renable interrupts
                 unsafe {
@@ -148,6 +127,14 @@ fn init_acpi() {
             _ => {}
         }
     }
+
+    // HPET
+    // we find the HPET in the RSDT and assign this into a global
+    unsafe {
+        *GLOBAL_HPET.borrow_mut() = Some(Mutex::new(rsdt.get_hpet().unwrap()));
+    };
+    // then it can be initialsed for future use.
+    global_hpet().init();
 }
 
 fn disable_pic() {
