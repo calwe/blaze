@@ -24,7 +24,6 @@ name = "kernel"
 version = "0.1.0"
 dependencies = [
  "multiboot2 0.19.0",
- "rlibc",
 ]
 
 [[package]]
@@ -113,12 +112,6 @@ checksum = "5267fca4496028628a95160fc423a33e8b2e6af8a5302579e322e4b520293cae"
 dependencies = [
  "proc-macro2",
 ]
-
-[[package]]
-name = "rlibc"
-version = "0.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4f725fa0be00ed4a869c61f1adb156b629bb6c8d97f2ee4d0644bba1ce33b04b"
 
 [[package]]
 name = "syn"

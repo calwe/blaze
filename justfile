@@ -4,10 +4,12 @@ profile := "debug"
 ovmf_code := "/usr/share/edk2-ovmf/x64/OVMF_CODE.fd"
 ovmf_vars := "ovmf/OVMF_VARS.fd"
 
-qemu_args := "-m 256M -S -s -d int,cpu_reset -no-reboot"
+qemu_args := "-m 256M -debugcon stdio -no-reboot"
+qemu_debug := "-S -s"
 
 build: build-bootstrap build-kernel link-kernel prep-iso build-iso
 run: build run-qemu
+run-debug: build run-qemu-debug
 
 build-bootstrap: (step "Building Bootstrap...")
     @mkdir target -p
@@ -31,6 +33,14 @@ run-qemu: (step "Running in QEMU")
     qemu-system-x86_64 -cdrom target/blaze.iso {{qemu_args}} \
         -drive if=pflash,format=raw,readonly=on,file={{ovmf_code}} \
         -drive if=pflash,format=raw,file={{ovmf_vars}}
+
+run-qemu-debug: (step "Running in QEMU (GDB Stub)")
+    qemu-system-x86_64 -cdrom target/blaze.iso {{qemu_args}} {{qemu_debug}} \
+        -drive if=pflash,format=raw,readonly=on,file={{ovmf_code}} \
+        -drive if=pflash,format=raw,file={{ovmf_vars}}
+
+run-bochs: build (step "Running in Bochs")
+    bochs -q
 
 new-header:
     cargo run --bin mbheader

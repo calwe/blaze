@@ -79,7 +79,7 @@ setgdt:
     mov ds, ax
     mov es, ax
     mov fs, ax
-    mov gs, ax
+    mov gs, ax 
     mov ss, ax
 
     ; _kmain mbinfo arg
@@ -93,9 +93,9 @@ break:
 section .data
 
 gdt dq 0x0                  ; NULL Descriptor
-    dq 0x00CF9A000000FFFF   ; Kernel Mode Code Segment
+    dq 0x00AF9A000000FFFF   ; Kernel Mode Code Segment
     dq 0x00CF92000000FFFF   ; Kernel Mode Data Segment
-    dq 0x00CFFA000000FFFF   ; User Mode Code Segment
+    dq 0x00AFFA000000FFFF   ; User Mode Code Segment
     dq 0x00CFF2000000FFFF   ; User Mode Data Segment
 
 gdtr dw 0 ; limit

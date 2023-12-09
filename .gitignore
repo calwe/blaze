@@ -1,3 +1,4 @@
 target/
 ovmf/
 multiboot2_header.bin
+bx_enh_dbg.ini
