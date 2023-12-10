@@ -1,7 +1,10 @@
 #![no_std]
 
-pub mod print;
+pub mod klog;
 pub mod util;
+
+#[macro_use]
+pub mod print;
 
 extern crate rlibc;
 
@@ -9,9 +12,8 @@ use core::{panic::PanicInfo, arch::asm};
 
 #[no_mangle]
 extern "C" fn _kmain(mbi_ptr: u64) -> ! {
-    // TODO: Serial Output
-    println!("Hello world!");
-    println!("Finally, printing args. The mbi_ptr is {mbi_ptr}");
+    klog::init(log::LevelFilter::Trace);
+
     loop {}
 }
 
