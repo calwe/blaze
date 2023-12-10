@@ -1,20 +1,18 @@
 #![no_std]
 
+pub mod print;
+pub mod util;
+
+extern crate rlibc;
 
 use core::{panic::PanicInfo, arch::asm};
 
 #[no_mangle]
 extern "C" fn _kmain(mbi_ptr: u64) -> ! {
     // TODO: Serial Output
-    put_char(b'a');
+    println!("Hello world!");
+    println!("Finally, printing args. The mbi_ptr is {mbi_ptr}");
     loop {}
-}
-
-#[inline]
-fn put_char(c: u8) {
-    unsafe {
-        asm!("out 0xe9, al", in("al") c);
-    }
 }
 
 #[panic_handler]
