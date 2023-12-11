@@ -34,7 +34,7 @@ pub fn put_char(c: char) {
 
 #[macro_export]
 macro_rules! print {
-    ($($t:tt)*) => { $crate::print::_print(format_args!($($t)*)) };
+    ($($t:tt)*) => { $crate::io::print::_print(format_args!($($t)*)) };
 }
 
 #[macro_export]
