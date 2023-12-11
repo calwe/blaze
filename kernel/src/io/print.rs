@@ -7,8 +7,8 @@ pub struct Writer;
 
 impl fmt::Write for Writer {
     fn write_str(&mut self, s: &str) -> fmt::Result {
-        for c in s.chars() {
-            put_char(c);
+        for c in s.bytes() {
+            put_byte(c);
         }
         Ok(())
     }
@@ -21,12 +21,9 @@ pub fn _print(args: fmt::Arguments) {
     let _ = fmt::Write::write_fmt(&mut *writer, args);
 }
 
-pub fn put_char(c: char) {
-    if !c.is_ascii() {
-        return;
-    }
-
+pub fn put_byte(c: u8) {
     unsafe { 
+
         outb(0xe9, c as u8);
     }
 }

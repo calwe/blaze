@@ -1,4 +1,4 @@
-use log::{info, trace, error};
+use log::{warn, info, trace, error};
 
 use spin::Lazy;
 
@@ -17,21 +17,21 @@ static IDT: Lazy<IDT> = Lazy::new(|| {
 #[no_mangle]
 pub fn kinit() {
     info!("Welcome to Blaze. Running kinit...");
+    info!("With UTF-8 Support! ⎷ⰹ⊷");
     trace!("Creating IDTR");
     let idtr = IDTR::new(&IDT);
     trace!("Loading IDTR");
     idtr.load();
-    unsafe {
-        let test = *(0x0000_8000_0000_0000 as *const u64);
-        asm!("mov rax, rbx");
-    }
     trace!("IDT Loaded! Testing...");
+    unsafe {
+        asm!("int3");
+    }
     trace!("Returned from interrupt");
 }
 
 #[no_mangle]
 extern "x86-interrupt" fn breakpoint(_stack_frame: &InterruptStackFrame) {
-    error!("Breakpoint!");
+    warn!("Recieved breakpoint interrupt");
 }
 
 extern "x86-interrupt" fn page_fault(_stack_frame: &InterruptStackFrame, page_fault: PageFaultErrorCode) {
