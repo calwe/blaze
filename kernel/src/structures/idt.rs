@@ -170,6 +170,11 @@ impl InterruptDescriptor {
             zero: 0,
         }
     }
+
+    pub fn with_ist(mut self, ist: u8) -> Self {
+        self.ist = ist;
+        self
+    }
 }
 
 bitfield! {
