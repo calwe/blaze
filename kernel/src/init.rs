@@ -2,6 +2,7 @@ use log::{warn, info, trace, error};
 
 use spin::Lazy;
 
+use crate::io::paging::{Page, Size4KiB, Size2MiB};
 use crate::structures::gdt::{GDT, GDTR};
 use crate::structures::idt::{InterruptDescriptor, InterruptStackFrame, IDT, IDTR, PageFaultErrorCode};
 use crate::println;
@@ -49,11 +50,9 @@ pub fn kinit() {
     trace!("Loading GDTR");
     gdtr.load();
     trace!("GDTR Loaded!");
-    trace!("Testing double fault");
-    unsafe {
-        asm!("int3");
-    }
-    trace!("Returned");
+
+    let page: Page<Size4KiB> = Page::from_address(0x4000);
+    let page2: Page<Size4KiB> = Page::from_address(0x12573);
 }
 
 #[no_mangle]
